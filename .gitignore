@@ -9,6 +9,7 @@
 ./docs/doxy/
 build/*
 build_*
+!build_support/
 cmake-build-*/*
 build
 .cache/*
@@ -25,4 +26,10 @@ GRTAGS
 GPATH
 GTAGS
 docs/book
+*.pyc
+miniob/
+start.sh
+connect.sh
+clean.sh
+observer.log*
 #*#

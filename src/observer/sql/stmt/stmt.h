@@ -16,7 +16,7 @@ See the Mulan PSL v2 for more details. */
 
 #include "common/rc.h"
 #include "sql/parser/parse_defs.h"
-
+class SQLStageEvent;
 class Db;
 
 /**
@@ -40,6 +40,7 @@ class Db;
   DEFINE_ENUM_ITEM(CREATE_INDEX)    \
   DEFINE_ENUM_ITEM(DROP_INDEX)      \
   DEFINE_ENUM_ITEM(SYNC)            \
+  DEFINE_ENUM_ITEM(SHOW_INDEX)      \
   DEFINE_ENUM_ITEM(SHOW_TABLES)     \
   DEFINE_ENUM_ITEM(DESC_TABLE)      \
   DEFINE_ENUM_ITEM(BEGIN)           \
@@ -50,7 +51,9 @@ class Db;
   DEFINE_ENUM_ITEM(EXIT)            \
   DEFINE_ENUM_ITEM(EXPLAIN)         \
   DEFINE_ENUM_ITEM(PREDICATE)       \
-  DEFINE_ENUM_ITEM(SET_VARIABLE)
+  DEFINE_ENUM_ITEM(SET_VARIABLE)    \
+  DEFINE_ENUM_ITEM(GROUPBY)         \
+  DEFINE_ENUM_ITEM(ORDERBY)         \
 
 enum class StmtType {
   #define DEFINE_ENUM_ITEM(name)  name,

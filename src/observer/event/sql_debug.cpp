@@ -22,7 +22,6 @@ using namespace std;
 
 void SqlDebug::add_debug_info(const std::string &debug_info)
 {
-  int i = 1;
   debug_infos_.push_back(debug_info);
 }
 

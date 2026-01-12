@@ -17,6 +17,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/optimizer/physical_plan_generator.h"
 #include "sql/operator/table_get_logical_operator.h"
 #include "sql/operator/table_scan_physical_operator.h"
+#include "sql/operator/dual_table_scan_physical_operator.h"
 #include "sql/operator/index_scan_physical_operator.h"
 #include "sql/operator/predicate_logical_operator.h"
 #include "sql/operator/predicate_physical_operator.h"
@@ -32,6 +33,14 @@ See the Mulan PSL v2 for more details. */
 #include "sql/operator/join_physical_operator.h"
 #include "sql/operator/calc_logical_operator.h"
 #include "sql/operator/calc_physical_operator.h"
+#include "sql/operator/update_logical_operator.h"
+#include "sql/operator/update_physical_operator.h"
+#include "sql/operator/groupby_logical_operator.h"
+#include "sql/operator/groupby_physical_operator.h"
+#include "sql/operator/create_table_logical_operator.h"
+#include "sql/operator/create_table_physical_operator.h"
+#include "sql/operator/orderby_logical_operator.h"
+#include "sql/operator/orderby_physical_operator.h"
 #include "sql/expr/expression.h"
 #include "common/log/log.h"
 
@@ -46,6 +55,10 @@ RC PhysicalPlanGenerator::create(LogicalOperator &logical_operator, unique_ptr<P
       return create_plan(static_cast<CalcLogicalOperator &>(logical_operator), oper);
     } break;
 
+    case LogicalOperatorType::CREATE_TABLE: {
+      return create_plan(static_cast<CreateTableLogicalOperator &>(logical_operator), oper);
+    } break;
+
     case LogicalOperatorType::TABLE_GET: {
       return create_plan(static_cast<TableGetLogicalOperator &>(logical_operator), oper);
     } break;
@@ -56,6 +69,14 @@ RC PhysicalPlanGenerator::create(LogicalOperator &logical_operator, unique_ptr<P
 
     case LogicalOperatorType::PROJECTION: {
       return create_plan(static_cast<ProjectLogicalOperator &>(logical_operator), oper);
+    } break;
+
+    case LogicalOperatorType::GROUPBY: {
+      return create_plan(static_cast<GroupByLogicalOperator &>(logical_operator), oper);
+    } break;
+
+    case LogicalOperatorType::ORDERBY: {
+      return create_plan(static_cast<OrderByLogicalOperator &>(logical_operator), oper);
     } break;
 
     case LogicalOperatorType::INSERT: {
@@ -74,6 +95,9 @@ RC PhysicalPlanGenerator::create(LogicalOperator &logical_operator, unique_ptr<P
       return create_plan(static_cast<JoinLogicalOperator &>(logical_operator), oper);
     } break;
 
+    case LogicalOperatorType::UPDATE: {
+      return create_plan(static_cast<UpdateLogicalOperator &>(logical_operator), oper);
+    } break;
     default: {
       return RC::INVALID_ARGUMENT;
     }
@@ -83,13 +107,25 @@ RC PhysicalPlanGenerator::create(LogicalOperator &logical_operator, unique_ptr<P
 
 RC PhysicalPlanGenerator::create_plan(TableGetLogicalOperator &table_get_oper, unique_ptr<PhysicalOperator> &oper)
 {
-  vector<unique_ptr<Expression>> &predicates = table_get_oper.predicates();
+  vector<unique_ptr<Expression>> &predicates = table_get_oper.predicates();//谓词下推这里才会有内容
   // 看看是否有可以用于索引查找的表达式
   Table *table = table_get_oper.table();
 
   Index *index = nullptr;
   ValueExpr *value_expr = nullptr;
+
+  auto process_subquery = [](Expression* expr) {
+    if (expr->type() == ExprType::SUBQUERY) {
+      SubQueryExpr* sub_query_expr = static_cast<SubQueryExpr*>(expr);
+      sub_query_expr->generate_physical_oper();
+    }
+    return RC::SUCCESS;
+  };
+
   for (auto &expr : predicates) {
+    if (RC rc = expr->traverse_check(process_subquery); RC::SUCCESS != rc) {
+      return rc;
+    }
     if (expr->type() == ExprType::COMPARISON) {
       auto comparison_expr = static_cast<ComparisonExpr *>(expr.get());
       // 简单处理，就找等值查询
@@ -167,6 +203,16 @@ RC PhysicalPlanGenerator::create_plan(PredicateLogicalOperator &pred_oper, uniqu
   ASSERT(expressions.size() == 1, "predicate logical operator's children should be 1");
 
   unique_ptr<Expression> expression = std::move(expressions.front());
+  rc = expression->traverse_check([](Expression* expr) {
+    if (expr->type() == ExprType::SUBQUERY) {
+      SubQueryExpr* sub_query_expr = static_cast<SubQueryExpr*>(expr);
+      return sub_query_expr->generate_physical_oper();
+    }
+    return RC::SUCCESS;
+  });
+  if (RC::SUCCESS != rc) {
+    return rc;
+  }
   oper = unique_ptr<PhysicalOperator>(new PredicatePhysicalOperator(std::move(expression)));
   oper->add_child(std::move(child_phy_oper));
   return rc;
@@ -186,14 +232,12 @@ RC PhysicalPlanGenerator::create_plan(ProjectLogicalOperator &project_oper, uniq
       LOG_WARN("failed to create project logical operator's child physical operator. rc=%s", strrc(rc));
       return rc;
     }
+  } else {
+    child_phy_oper = std::make_unique<DualTableScanPhysicalOperator>();
   }
 
-  ProjectPhysicalOperator *project_operator = new ProjectPhysicalOperator;
-  const vector<Field> &project_fields = project_oper.fields();
-  for (const Field &field : project_fields) {
-    project_operator->add_projection(field.table(), field.meta());
-  }
-
+  ProjectPhysicalOperator *project_operator = new ProjectPhysicalOperator();
+  project_operator->add_projections(std::move(project_oper.projects()));
   if (child_phy_oper) {
     project_operator->add_child(std::move(child_phy_oper));
   }
@@ -204,10 +248,67 @@ RC PhysicalPlanGenerator::create_plan(ProjectLogicalOperator &project_oper, uniq
   return rc;
 }
 
+RC PhysicalPlanGenerator::create_plan(GroupByLogicalOperator &groupby_oper, unique_ptr<PhysicalOperator> &oper)
+{
+  vector<unique_ptr<LogicalOperator>> &child_opers = groupby_oper.children();
+  unique_ptr<PhysicalOperator> child_phy_oper;
+
+  RC rc = RC::SUCCESS;
+  if (!child_opers.empty()) {
+    LogicalOperator *child_oper = child_opers.front().get();
+    rc = create(*child_oper, child_phy_oper);
+    if (rc != RC::SUCCESS) {
+      LOG_WARN("failed to create groupby logical operator's child physical operator. rc=%s", strrc(rc));
+      return rc;
+    }
+  }
+
+  GroupByPhysicalOperator *groupby_operator = new GroupByPhysicalOperator(
+      std::move(groupby_oper.groupby_fields()),
+      std::move(groupby_oper.agg_exprs()),
+      std::move(groupby_oper.field_exprs()));
+  if (child_phy_oper) {
+    groupby_operator->add_child(std::move(child_phy_oper));
+  }
+
+  oper = unique_ptr<PhysicalOperator>(groupby_operator);
+
+  LOG_TRACE("create a groupby physical operator");
+  return rc;
+}
+
+RC PhysicalPlanGenerator::create_plan(OrderByLogicalOperator &orderby_oper, unique_ptr<PhysicalOperator> &oper)
+{
+  vector<unique_ptr<LogicalOperator>> &child_opers = orderby_oper.children();
+  unique_ptr<PhysicalOperator> child_phy_oper;
+
+  RC rc = RC::SUCCESS;
+  if (!child_opers.empty()) {
+    LogicalOperator *child_oper = child_opers.front().get();
+    rc = create(*child_oper, child_phy_oper);
+    if (rc != RC::SUCCESS) {
+      LOG_WARN("failed to create orderby logical operator's child physical operator. rc=%s", strrc(rc));
+      return rc;
+    }
+  }
+
+  OrderByPhysicalOperator *orderby_operator = new OrderByPhysicalOperator(
+      std::move(orderby_oper.orderby_units()),
+      std::move(orderby_oper.exprs()));
+  if (child_phy_oper) {
+    orderby_operator->add_child(std::move(child_phy_oper));
+  }
+
+  oper = unique_ptr<PhysicalOperator>(orderby_operator);
+
+  LOG_TRACE("create a orderby physical operator");
+  return rc;
+}
+
 RC PhysicalPlanGenerator::create_plan(InsertLogicalOperator &insert_oper, unique_ptr<PhysicalOperator> &oper)
 {
   Table *table = insert_oper.table();
-  vector<Value> &values = insert_oper.values();
+  vector<vector<Value>> &values = insert_oper.values();
   InsertPhysicalOperator *insert_phy_oper = new InsertPhysicalOperator(table, std::move(values));
   oper.reset(insert_phy_oper);
   return RC::SUCCESS;
@@ -289,6 +390,67 @@ RC PhysicalPlanGenerator::create_plan(CalcLogicalOperator &logical_oper, std::un
   RC rc = RC::SUCCESS;
   CalcPhysicalOperator *calc_oper = new CalcPhysicalOperator(std::move(logical_oper.expressions()));
   oper.reset(calc_oper);
+  return rc;
+}
+
+RC PhysicalPlanGenerator::create_plan(UpdateLogicalOperator &update_oper, unique_ptr<PhysicalOperator> &oper)
+{
+  vector<unique_ptr<LogicalOperator>> &child_opers = update_oper.children();
+
+  unique_ptr<PhysicalOperator> child_physical_oper;
+
+  RC rc = RC::SUCCESS;
+  if (!child_opers.empty()) {
+    LogicalOperator *child_oper = child_opers.front().get();
+    rc = create(*child_oper, child_physical_oper);
+    if (rc != RC::SUCCESS) {
+      LOG_WARN("failed to create physical operator. rc=%s", strrc(rc));
+      return rc;
+    }
+  }
+
+  for (auto& value : update_oper.values()) {
+    rc = value->traverse_check([](Expression* expr) {
+      if (expr->type() == ExprType::SUBQUERY) {
+        SubQueryExpr* sub_query_expr = static_cast<SubQueryExpr*>(expr);
+        sub_query_expr->generate_physical_oper();
+      }
+      return RC::SUCCESS;
+    });
+    if (RC::SUCCESS != rc) {
+      return rc;
+    }
+  }
+
+  oper = unique_ptr<PhysicalOperator>(new UpdatePhysicalOperator(update_oper.table(),
+                  std::move(update_oper.values()), update_oper.fields()));
+
+  if (child_physical_oper) {
+    oper->add_child(std::move(child_physical_oper));
+  }
+  return rc;
+}
+
+RC PhysicalPlanGenerator::create_plan(CreateTableLogicalOperator &logical_oper, std::unique_ptr<PhysicalOperator> &oper)
+{
+  RC rc = RC::SUCCESS;
+  oper = unique_ptr<PhysicalOperator>(new CreateTablePhysicalOperator(
+                                              logical_oper.get_db(),
+                                              std::move(logical_oper.table_name()), 
+                                              std::move(logical_oper.attr_infos())));
+
+  // create_table_select
+  unique_ptr<PhysicalOperator> select_oper;
+  vector<unique_ptr<LogicalOperator>> &child_opers = logical_oper.children();
+  if (!child_opers.empty()) {
+    LogicalOperator *child_oper = child_opers[0].get();
+    rc = create(*child_oper, select_oper);
+    if (RC::SUCCESS != rc) {
+      LOG_WARN("failed to create child operator for create_table_select, rc=%s", strrc(rc));
+      return rc;
+    }
+    oper->add_child(std::move(select_oper));
+  }
   return rc;
 }
 

@@ -19,7 +19,7 @@ See the Mulan PSL v2 for more details. */
 #include "session/session.h"
 #include "common/io/io.h"
 #include "common/log/log.h"
-
+#include <chrono>
 PlainCommunicator::PlainCommunicator()
 {
   send_message_delimiter_.assign(1, '\0');
@@ -37,7 +37,7 @@ RC PlainCommunicator::read_event(SessionEvent *&event)
   int data_len = 0;
   int read_len = 0;
 
-  const int max_packet_size = 8192;
+  const int max_packet_size = 8192 * 16;
   std::vector<char> buf(max_packet_size);
 
   // 持续接收消息，直到遇到'\0'。将'\0'遇到的后续数据直接丢弃没有处理，因为目前仅支持一收一发的模式
@@ -105,7 +105,7 @@ RC PlainCommunicator::write_state(SessionEvent *event, bool &need_disconnect)
     snprintf(buf, buf_size, "%s > %s\n", strrc(sql_result->return_code()), state_string.c_str());
   }
 
-  RC rc = writer_->writen(buf, strlen(buf) + 1);
+  RC rc = writer_->writen(buf, strlen(buf));
   if (OB_FAIL(rc)) {
     LOG_WARN("failed to send data to client. err=%s", strerror(errno));
     need_disconnect = true;
@@ -158,8 +158,23 @@ RC PlainCommunicator::write_debug(SessionEvent *request, bool &need_disconnect)
 RC PlainCommunicator::write_result(SessionEvent *event, bool &need_disconnect)
 {
   RC rc = write_result_internal(event, need_disconnect);
+  if (RC::SUCCESS != rc) {
+
+  }
   if (!need_disconnect) {
-    (void)write_debug(event, need_disconnect);
+    // (void)write_debug(event, need_disconnect);
+    RC rc1 = write_debug(event, need_disconnect);
+    if (OB_FAIL(rc1)) {
+      LOG_WARN("failed to send debug info to client. rc=%s, err=%s", strrc(rc), strerror(errno));
+    }
+  }
+  if (!need_disconnect) {
+    rc = writer_->writen(send_message_delimiter_.data(), send_message_delimiter_.size());
+    if (OB_FAIL(rc)) {
+      LOG_ERROR("Failed to send data back to client. ret=%s, error=%s", strrc(rc), strerror(errno));
+      need_disconnect = true;
+      return rc;
+    }
   }
   writer_->flush(); // TODO handle error
   return rc;
@@ -186,43 +201,55 @@ RC PlainCommunicator::write_result_internal(SessionEvent *event, bool &need_disc
   const TupleSchema &schema = sql_result->tuple_schema();
   const int cell_num = schema.cell_num();
 
-  for (int i = 0; i < cell_num; i++) {
-    const TupleCellSpec &spec = schema.cell_at(i);
-    const char *alias = spec.alias();
-    if (nullptr != alias || alias[0] != 0) {
-      if (0 != i) {
-        const char *delim = " | ";
-        rc = writer_->writen(delim, strlen(delim));
+  auto write_output_head = [&]() {
+    for (int i = 0; i < cell_num; i++) {
+      const TupleCellSpec &spec = schema.cell_at(i);
+      const char *alias = spec.alias();
+      if (nullptr != alias || alias[0] != 0) {
+        if (0 != i) {
+          const char *delim = " | ";
+          rc = writer_->writen(delim, strlen(delim));
+          if (OB_FAIL(rc)) {
+            LOG_WARN("failed to send data to client. err=%s", strerror(errno));
+            return rc;
+          }
+        }
+
+        int len = strlen(alias);
+        rc = writer_->writen(alias, len);
         if (OB_FAIL(rc)) {
           LOG_WARN("failed to send data to client. err=%s", strerror(errno));
+          sql_result->close();
           return rc;
         }
       }
+    }
 
-      int len = strlen(alias);
-      rc = writer_->writen(alias, len);
+    if (cell_num > 0) {
+      char newline = '\n';
+      rc = writer_->writen(&newline, 1);
       if (OB_FAIL(rc)) {
         LOG_WARN("failed to send data to client. err=%s", strerror(errno));
         sql_result->close();
         return rc;
       }
     }
-  }
-
-  if (cell_num > 0) {
-    char newline = '\n';
-    rc = writer_->writen(&newline, 1);
-    if (OB_FAIL(rc)) {
-      LOG_WARN("failed to send data to client. err=%s", strerror(errno));
-      sql_result->close();
-      return rc;
-    }
-  }
+    return RC::SUCCESS;
+  };
 
   rc = RC::SUCCESS;
   Tuple *tuple = nullptr;
+  bool is_first = true;
   while (RC::SUCCESS == (rc = sql_result->next_tuple(tuple))) {
     assert(tuple != nullptr);
+
+    if (is_first) {
+      rc = write_output_head();
+      if (RC::SUCCESS != rc) {
+        return rc;
+      }
+      is_first = false;
+    }
 
     int cell_num = tuple->cell_num();
     for (int i = 0; i < cell_num; i++) {
@@ -263,6 +290,17 @@ RC PlainCommunicator::write_result_internal(SessionEvent *event, bool &need_disc
 
   if (rc == RC::RECORD_EOF) {
     rc = RC::SUCCESS;
+    if (is_first) {
+      rc = write_output_head();
+      if (RC::SUCCESS != rc) {
+        return rc;
+      }
+      is_first = false;
+    }
+  } else {
+    sql_result->close();
+    sql_result->set_return_code(rc);
+    return write_state(event, need_disconnect);
   }
 
   if (cell_num == 0) {
@@ -277,12 +315,12 @@ RC PlainCommunicator::write_result_internal(SessionEvent *event, bool &need_disc
     return write_state(event, need_disconnect);
   } else {
 
-    rc = writer_->writen(send_message_delimiter_.data(), send_message_delimiter_.size());
-    if (OB_FAIL(rc)) {
-      LOG_ERROR("Failed to send data back to client. ret=%s, error=%s", strrc(rc), strerror(errno));
-      sql_result->close();
-      return rc;
-    }
+    // rc = writer_->writen(send_message_delimiter_.data(), send_message_delimiter_.size());
+    // if (OB_FAIL(rc)) {
+    //   LOG_ERROR("Failed to send data back to client. ret=%s, error=%s", strrc(rc), strerror(errno));
+    //   sql_result->close();
+    //   return rc;
+    // }
 
     need_disconnect = false;
   }
