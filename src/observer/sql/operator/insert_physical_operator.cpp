@@ -51,7 +51,7 @@ RC InsertPhysicalOperator::open(Trx *trx)
   if (rc != RC::SUCCESS) {
     LOG_WARN("failed to insert records by transaction. rc=%s", strrc(rc));
     // 返回错误，让执行器处理回滚（SqlResult::close() 会自动回滚失败的事务）
-    return rc;
+  return rc;
   }
 
   return RC::SUCCESS;

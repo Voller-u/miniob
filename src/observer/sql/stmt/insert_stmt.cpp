@@ -71,43 +71,53 @@ RC InsertStmt::check_full_rows(Table *table, const InsertSqlNode &inserts, std::
       return RC::SCHEMA_FIELD_MISSING;
     }
 
+    // 创建新的一行数据，用于存储类型转换后的值
+    std::vector<Value> row;
+    row.reserve(field_num);
+
     // check fields type
     for (int i = 0; i < field_num; i++) {
       const FieldMeta *field_meta = table_meta.field(i + sys_field_num);
       const AttrType field_type = field_meta->type();
       const AttrType value_type = values[i].attr_type();
+      
+      Value value = values[i];  // 复制值以便进行类型转换
+      
       if (value_type == NULLS && field_meta->nullable()) {
+        row.emplace_back(value);
         continue;
       }
+      
       if (field_type != value_type) {
         if (TEXTS == field_type && CHARS == value_type) {
-          if (MAX_TEXT_LENGTH < values[i].length()) {
-            LOG_WARN("Text length:%d, over max_length 65535", values[i].length());
+          if (MAX_TEXT_LENGTH < value.length()) {
+            LOG_WARN("Text length:%d, over max_length 65535", value.length());
             return RC::INVALID_ARGUMENT;
           }
-        } else if (const_cast<Value&>(values[i]).typecast(field_type) != RC::SUCCESS) {
+        } else if (value.typecast(field_type) != RC::SUCCESS) {
           LOG_WARN("field type mismatch. table=%s, field=%s, field type=%d, value_type=%d",
             table->name(), field_meta->name(), field_type, value_type);
           return RC::SCHEMA_FIELD_TYPE_MISMATCH;
         }
       }
-      if(field_type == CHARS && values[i].length() > field_meta->len()){
-          return RC::INVALID_ARGUMENT;
-      }
-      if(field_type == CHARS) {
-        if (values[i].length() > field_meta->len()) {
+      
+      if (field_type == CHARS) {
+        if (value.length() > field_meta->len()) {
+          LOG_WARN("char field length mismatch. field=%s, value length=%d, field len=%d",
+            field_meta->name(), value.length(), field_meta->len());
           return RC::INVALID_ARGUMENT;
         }
         // 将不确定长度的 char 改为固定长度的 char
         char *char_data = (char*)malloc(field_meta->len());
         memset(char_data, 0, field_meta->len());
-        memcpy(char_data, values[i].data(), values[i].length());
-        const Value &char_value = values[i];
-        const_cast<Value*>(&char_value)->set_data(char_data, field_meta->len());
+        memcpy(char_data, value.data(), value.length());
+        row.emplace_back(Value(CHARS, char_data, field_meta->len()));
         free(char_data);
+      } else {
+        row.emplace_back(value);
       }
     }
-    rows.emplace_back(values);
+    rows.emplace_back(std::move(row));
   }
   return rc;
 }
@@ -175,11 +185,10 @@ RC InsertStmt::check_incomplete_rows(Table *table, const InsertSqlNode &inserts,
             return RC::SCHEMA_FIELD_TYPE_MISMATCH;
           }
         }
-        if(field_type == CHARS && values[name_idx].length() > field_meta->len()){
-            return RC::INVALID_ARGUMENT;
-        }
-        if(field_type == CHARS) {
+        if (field_type == CHARS) {
           if (values[name_idx].length() > field_meta->len()) {
+            LOG_WARN("char field length mismatch. field=%s, value length=%d, field len=%d",
+              field_meta->name(), values[name_idx].length(), field_meta->len());
             return RC::INVALID_ARGUMENT;
           }
           // 将不确定长度的 char 改为固定长度的 char
@@ -188,8 +197,9 @@ RC InsertStmt::check_incomplete_rows(Table *table, const InsertSqlNode &inserts,
           memcpy(char_data, values[name_idx].data(), values[name_idx].length());
           row[i] = Value(CHARS, char_data, field_meta->len());
           free(char_data);
+        } else {
+          row[i] = values[name_idx];
         }
-        row[i] = values[name_idx];
       }
     }
     rows.emplace_back(row);
