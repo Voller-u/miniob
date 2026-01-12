@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <algorithm>
 
 #include "common/log/log.h"
 #include "common/lang/string.h"
@@ -21,7 +22,7 @@ string token_name(const char *sql_string, YYLTYPE *llocp)
 
 int yyerror(YYLTYPE *llocp, const char *sql_string, ParsedSqlResult *sql_result, yyscan_t scanner, const char *msg)
 {
-  unique_ptr<ParsedSqlNode> error_sql_node = make_unique<ParsedSqlNode>(SCF_ERROR);
+  std::unique_ptr<ParsedSqlNode> error_sql_node = std::make_unique<ParsedSqlNode>(SCF_ERROR);
   error_sql_node->error.error_msg = msg;
   error_sql_node->error.line = llocp->first_line;
   error_sql_node->error.column = llocp->first_column;
@@ -40,16 +41,6 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
   return expr;
 }
 
-UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
-                                           Expression *child,
-                                           const char *sql_string,
-                                           YYLTYPE *llocp)
-{
-  UnboundAggregateExpr *expr = new UnboundAggregateExpr(aggregate_name, child);
-  expr->set_name(token_name(sql_string, llocp));
-  return expr;
-}
-
 %}
 
 %define api.pure full
@@ -64,10 +55,8 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
 
 //标识tokens
 %token  SEMICOLON
-        BY
         CREATE
         DROP
-        GROUP
         TABLE
         TABLES
         INDEX
@@ -88,7 +77,6 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
         INT_T
         STRING_T
         FLOAT_T
-        VECTOR_T
         HELP
         EXIT
         DOT //QUOTE
@@ -103,14 +91,6 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
         DATA
         INFILE
         EXPLAIN
-        STORAGE
-        FORMAT
-        PRIMARY
-        KEY
-        ANALYZE
-        FIELDS
-        TERMINATED
-        ENCLOSED
         EQ
         LT
         GT
@@ -120,41 +100,28 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
 
 /** union 中定义各种数据类型，真实生成的代码也是union类型，所以不能有非POD类型的数据 **/
 %union {
-  ParsedSqlNode *                            sql_node;
-  ConditionSqlNode *                         condition;
-  Value *                                    value;
-  enum CompOp                                comp;
-  RelAttrSqlNode *                           rel_attr;
-  vector<AttrInfoSqlNode> *                  attr_infos;
-  AttrInfoSqlNode *                          attr_info;
-  Expression *                               expression;
-  vector<unique_ptr<Expression>> *           expression_list;
-  vector<Value> *                            value_list;
-  vector<ConditionSqlNode> *                 condition_list;
-  vector<RelAttrSqlNode> *                   rel_attr_list;
-  vector<string> *                           relation_list;
-  vector<string> *                           key_list;
-  char *                                     cstring;
-  int                                        number;
-  float                                      floats;
+  ParsedSqlNode *                   sql_node;
+  ConditionSqlNode *                condition;
+  Value *                           value;
+  enum CompOp                       comp;
+  RelAttrSqlNode *                  rel_attr;
+  std::vector<AttrInfoSqlNode> *    attr_infos;
+  AttrInfoSqlNode *                 attr_info;
+  Expression *                      expression;
+  std::vector<Expression *> *       expression_list;
+  std::vector<Value> *              value_list;
+  std::vector<ConditionSqlNode> *   condition_list;
+  std::vector<RelAttrSqlNode> *     rel_attr_list;
+  std::vector<std::string> *        relation_list;
+  char *                            string;
+  int                               number;
+  float                             floats;
 }
-
-%destructor { delete $$; } <condition>
-%destructor { delete $$; } <value>
-%destructor { delete $$; } <rel_attr>
-%destructor { delete $$; } <attr_infos>
-%destructor { delete $$; } <expression>
-%destructor { delete $$; } <expression_list>
-%destructor { delete $$; } <value_list>
-%destructor { delete $$; } <condition_list>
-// %destructor { delete $$; } <rel_attr_list>
-%destructor { delete $$; } <relation_list>
-%destructor { delete $$; } <key_list>
 
 %token <number> NUMBER
 %token <floats> FLOAT
-%token <cstring> ID
-%token <cstring> SSS
+%token <string> ID
+%token <string> SSS
 //非终结符
 
 /** type 定义了各种解析后的结果输出的是什么类型。类型对应了 union 中的定义的成员变量名称 **/
@@ -162,7 +129,6 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
 %type <condition>           condition
 %type <value>               value
 %type <number>              number
-%type <cstring>             relation
 %type <comp>                comp_op
 %type <rel_attr>            rel_attr
 %type <attr_infos>          attr_def_list
@@ -170,16 +136,11 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
 %type <value_list>          value_list
 %type <condition_list>      where
 %type <condition_list>      condition_list
-%type <cstring>             storage_format
-%type <key_list>            primary_key
-%type <key_list>            attr_list
+%type <rel_attr_list>       select_attr
 %type <relation_list>       rel_list
+%type <rel_attr_list>       attr_list
 %type <expression>          expression
-%type <expression>          aggregate_expression
 %type <expression_list>     expression_list
-%type <expression_list>     group_by
-%type <cstring>             fields_terminated_by
-%type <cstring>             enclosed_by
 %type <sql_node>            calc_stmt
 %type <sql_node>            select_stmt
 %type <sql_node>            insert_stmt
@@ -187,7 +148,6 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
 %type <sql_node>            delete_stmt
 %type <sql_node>            create_table_stmt
 %type <sql_node>            drop_table_stmt
-%type <sql_node>            analyze_table_stmt
 %type <sql_node>            show_tables_stmt
 %type <sql_node>            desc_table_stmt
 %type <sql_node>            create_index_stmt
@@ -207,12 +167,12 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
 
 %left '+' '-'
 %left '*' '/'
-%right UMINUS
+%nonassoc UMINUS
 %%
 
 commands: command_wrapper opt_semicolon  //commands or sqls. parser starts here.
   {
-    unique_ptr<ParsedSqlNode> sql_node = unique_ptr<ParsedSqlNode>($1);
+    std::unique_ptr<ParsedSqlNode> sql_node = std::unique_ptr<ParsedSqlNode>($1);
     sql_result->add_sql_node(std::move(sql_node));
   }
   ;
@@ -225,7 +185,6 @@ command_wrapper:
   | delete_stmt
   | create_table_stmt
   | drop_table_stmt
-  | analyze_table_stmt
   | show_tables_stmt
   | desc_table_stmt
   | create_index_stmt
@@ -280,14 +239,8 @@ drop_table_stmt:    /*drop table 语句的语法解析树*/
     DROP TABLE ID {
       $$ = new ParsedSqlNode(SCF_DROP_TABLE);
       $$->drop_table.relation_name = $3;
+      free($3);
     };
-
-analyze_table_stmt:  /* analyze table 语法的语法解析树*/
-    ANALYZE TABLE ID {
-      $$ = new ParsedSqlNode(SCF_ANALYZE_TABLE);
-      $$->analyze_table.relation_name = $3;
-    }
-    ;
 
 show_tables_stmt:
     SHOW TABLES {
@@ -299,6 +252,7 @@ desc_table_stmt:
     DESC ID  {
       $$ = new ParsedSqlNode(SCF_DESC_TABLE);
       $$->desc_table.relation_name = $2;
+      free($2);
     }
     ;
 
@@ -310,6 +264,9 @@ create_index_stmt:    /*create index 语句的语法解析树*/
       create_index.index_name = $3;
       create_index.relation_name = $5;
       create_index.attribute_name = $7;
+      free($3);
+      free($5);
+      free($7);
     }
     ;
 
@@ -319,41 +276,42 @@ drop_index_stmt:      /*drop index 语句的语法解析树*/
       $$ = new ParsedSqlNode(SCF_DROP_INDEX);
       $$->drop_index.index_name = $3;
       $$->drop_index.relation_name = $5;
+      free($3);
+      free($5);
     }
     ;
 create_table_stmt:    /*create table 语句的语法解析树*/
-    CREATE TABLE ID LBRACE attr_def_list primary_key RBRACE storage_format
+    CREATE TABLE ID LBRACE attr_def attr_def_list RBRACE
     {
       $$ = new ParsedSqlNode(SCF_CREATE_TABLE);
       CreateTableSqlNode &create_table = $$->create_table;
       create_table.relation_name = $3;
-      //free($3);
+      free($3);
 
-      create_table.attr_infos.swap(*$5);
+      std::vector<AttrInfoSqlNode> *src_attrs = $6;
+
+      if (src_attrs != nullptr) {
+        create_table.attr_infos.swap(*src_attrs);
+      }
+      create_table.attr_infos.emplace_back(*$5);
+      std::reverse(create_table.attr_infos.begin(), create_table.attr_infos.end());
       delete $5;
-
-      if ($6 != nullptr) {
-        create_table.primary_keys.swap(*$6);
-        delete $6;
-      }
-      if ($8 != nullptr) {
-        create_table.storage_format = $8;
-      }
     }
     ;
-    
 attr_def_list:
-    attr_def
+    /* empty */
     {
-      $$ = new vector<AttrInfoSqlNode>;
-      $$->emplace_back(*$1);
-      delete $1;
+      $$ = nullptr;
     }
-    | attr_def_list COMMA attr_def
+    | COMMA attr_def attr_def_list
     {
-      $$ = $1;
-      $$->emplace_back(*$3);
-      delete $3;
+      if ($3 != nullptr) {
+        $$ = $3;
+      } else {
+        $$ = new std::vector<AttrInfoSqlNode>;
+      }
+      $$->emplace_back(*$2);
+      delete $2;
     }
     ;
     
@@ -364,6 +322,7 @@ attr_def:
       $$->type = (AttrType)$2;
       $$->name = $1;
       $$->length = $4;
+      free($1);
     }
     | ID type
     {
@@ -371,65 +330,45 @@ attr_def:
       $$->type = (AttrType)$2;
       $$->name = $1;
       $$->length = 4;
+      free($1);
     }
     ;
 number:
     NUMBER {$$ = $1;}
     ;
 type:
-    INT_T      { $$ = static_cast<int>(AttrType::INTS); }
-    | STRING_T { $$ = static_cast<int>(AttrType::CHARS); }
-    | FLOAT_T  { $$ = static_cast<int>(AttrType::FLOATS); }
-    | VECTOR_T { $$ = static_cast<int>(AttrType::VECTORS); }
+    INT_T      { $$=INTS; }
+    | STRING_T { $$=CHARS; }
+    | FLOAT_T  { $$=FLOATS; }
     ;
-primary_key:
-    /* empty */
-    {
-      $$ = nullptr;
-    }
-    | COMMA PRIMARY KEY LBRACE attr_list RBRACE
-    {
-      $$ = $5;
-    }
-    ;
-
-attr_list:
-    ID {
-      $$ = new vector<string>();
-      $$->push_back($1);
-    }
-    | ID COMMA attr_list {
-      if ($3 != nullptr) {
-        $$ = $3;
-      } else {
-        $$ = new vector<string>;
-      }
-
-      $$->insert($$->begin(), $1);
-    }
-    ;
-
 insert_stmt:        /*insert   语句的语法解析树*/
-    INSERT INTO ID VALUES LBRACE value_list RBRACE 
+    INSERT INTO ID VALUES LBRACE value value_list RBRACE 
     {
       $$ = new ParsedSqlNode(SCF_INSERT);
       $$->insertion.relation_name = $3;
-      $$->insertion.values.swap(*$6);
+      if ($7 != nullptr) {
+        $$->insertion.values.swap(*$7);
+      }
+      $$->insertion.values.emplace_back(*$6);
+      std::reverse($$->insertion.values.begin(), $$->insertion.values.end());
       delete $6;
+      free($3);
     }
     ;
 
 value_list:
-    value
+    /* empty */
     {
-      $$ = new vector<Value>;
-      $$->emplace_back(*$1);
-      delete $1;
+      $$ = nullptr;
     }
-    | value_list COMMA value { 
-      $$ = $1;
-      $$->emplace_back(*$3);
-      delete $3;
+    | COMMA value value_list  { 
+      if ($3 != nullptr) {
+        $$ = $3;
+      } else {
+        $$ = new std::vector<Value>;
+      }
+      $$->emplace_back(*$2);
+      delete $2;
     }
     ;
 value:
@@ -447,16 +386,6 @@ value:
       free(tmp);
     }
     ;
-storage_format:
-    /* empty */
-    {
-      $$ = nullptr;
-    }
-    | STORAGE FORMAT EQ ID
-    {
-      $$ = $4;
-    }
-    ;
     
 delete_stmt:    /*  delete 语句的语法解析树*/
     DELETE FROM ID where 
@@ -467,6 +396,7 @@ delete_stmt:    /*  delete 语句的语法解析树*/
         $$->deletion.conditions.swap(*$4);
         delete $4;
       }
+      free($3);
     }
     ;
 update_stmt:      /*  update 语句的语法解析树*/
@@ -480,37 +410,37 @@ update_stmt:      /*  update 语句的语法解析树*/
         $$->update.conditions.swap(*$7);
         delete $7;
       }
+      free($2);
+      free($4);
     }
     ;
 select_stmt:        /*  select 语句的语法解析树*/
-    SELECT expression_list FROM rel_list where group_by
+    SELECT select_attr FROM ID rel_list where
     {
       $$ = new ParsedSqlNode(SCF_SELECT);
       if ($2 != nullptr) {
-        $$->selection.expressions.swap(*$2);
+        $$->selection.attributes.swap(*$2);
         delete $2;
       }
-
-      if ($4 != nullptr) {
-        $$->selection.relations.swap(*$4);
-        delete $4;
-      }
-
       if ($5 != nullptr) {
-        $$->selection.conditions.swap(*$5);
+        $$->selection.relations.swap(*$5);
         delete $5;
       }
+      $$->selection.relations.push_back($4);
+      std::reverse($$->selection.relations.begin(), $$->selection.relations.end());
 
       if ($6 != nullptr) {
-        $$->selection.group_by.swap(*$6);
+        $$->selection.conditions.swap(*$6);
         delete $6;
       }
+      free($4);
     }
     ;
 calc_stmt:
     CALC expression_list
     {
       $$ = new ParsedSqlNode(SCF_CALC);
+      std::reverse($2->begin(), $2->end());
       $$->calc.expressions.swap(*$2);
       delete $2;
     }
@@ -519,7 +449,7 @@ calc_stmt:
 expression_list:
     expression
     {
-      $$ = new vector<unique_ptr<Expression>>;
+      $$ = new std::vector<Expression*>;
       $$->emplace_back($1);
     }
     | expression COMMA expression_list
@@ -527,9 +457,9 @@ expression_list:
       if ($3 != nullptr) {
         $$ = $3;
       } else {
-        $$ = new vector<unique_ptr<Expression>>;
+        $$ = new std::vector<Expression *>;
       }
-      $$->emplace($$->begin(), $1);
+      $$->emplace_back($1);
     }
     ;
 expression:
@@ -552,28 +482,29 @@ expression:
     | '-' expression %prec UMINUS {
       $$ = create_arithmetic_expression(ArithmeticExpr::Type::NEGATIVE, $2, nullptr, sql_string, &@$);
     }
-    | '*' {
-      $$ = new StarExpr();
-    }
     | value {
       $$ = new ValueExpr(*$1);
       $$->set_name(token_name(sql_string, &@$));
       delete $1;
     }
-    | rel_attr {
-      RelAttrSqlNode *node = $1;
-      $$ = new UnboundFieldExpr(node->relation_name, node->attribute_name);
-      $$->set_name(token_name(sql_string, &@$));
-      delete $1;
-    }
-    | aggregate_expression {
-      $$ = $1;
-    }
     ;
 
-aggregate_expression:
-    ID LBRACE expression RBRACE {
-      $$ = create_aggregate_expression($1, $3, sql_string, &@$);
+select_attr:
+    '*' {
+      $$ = new std::vector<RelAttrSqlNode>;
+      RelAttrSqlNode attr;
+      attr.relation_name  = "";
+      attr.attribute_name = "*";
+      $$->emplace_back(attr);
+    }
+    | rel_attr attr_list {
+      if ($2 != nullptr) {
+        $$ = $2;
+      } else {
+        $$ = new std::vector<RelAttrSqlNode>;
+      }
+      $$->emplace_back(*$1);
+      delete $1;
     }
     ;
 
@@ -581,35 +512,50 @@ rel_attr:
     ID {
       $$ = new RelAttrSqlNode;
       $$->attribute_name = $1;
+      free($1);
     }
     | ID DOT ID {
       $$ = new RelAttrSqlNode;
       $$->relation_name  = $1;
       $$->attribute_name = $3;
+      free($1);
+      free($3);
     }
     ;
 
-relation:
-    ID {
-      $$ = $1;
+attr_list:
+    /* empty */
+    {
+      $$ = nullptr;
     }
-    ;
-rel_list:
-    relation {
-      $$ = new vector<string>();
-      $$->push_back($1);
-    }
-    | relation COMMA rel_list {
+    | COMMA rel_attr attr_list {
       if ($3 != nullptr) {
         $$ = $3;
       } else {
-        $$ = new vector<string>;
+        $$ = new std::vector<RelAttrSqlNode>;
       }
 
-      $$->insert($$->begin(), $1);
+      $$->emplace_back(*$2);
+      delete $2;
     }
     ;
 
+rel_list:
+    /* empty */
+    {
+      $$ = nullptr;
+    }
+    | COMMA ID rel_list {
+      if ($3 != nullptr) {
+        $$ = $3;
+      } else {
+        $$ = new std::vector<std::string>;
+      }
+
+      $$->push_back($2);
+      free($2);
+    }
+    ;
 where:
     /* empty */
     {
@@ -625,7 +571,7 @@ condition_list:
       $$ = nullptr;
     }
     | condition {
-      $$ = new vector<ConditionSqlNode>;
+      $$ = new std::vector<ConditionSqlNode>;
       $$->emplace_back(*$1);
       delete $1;
     }
@@ -695,66 +641,24 @@ comp_op:
     | NE { $$ = NOT_EQUAL; }
     ;
 
-// your code here
-group_by:
-    /* empty */
-    {
-      $$ = nullptr;
-    }
-    | GROUP BY expression_list
-    {
-      // group by 的表达式范围与select查询值的表达式范围是不同的，比如group by不支持 *
-      // 但是这里没有处理。
-      $$ = $3;
-    }
-    ;
 load_data_stmt:
-    LOAD DATA INFILE SSS INTO TABLE ID fields_terminated_by enclosed_by
+    LOAD DATA INFILE SSS INTO TABLE ID 
     {
       char *tmp_file_name = common::substr($4, 1, strlen($4) - 2);
       
       $$ = new ParsedSqlNode(SCF_LOAD_DATA);
       $$->load_data.relation_name = $7;
       $$->load_data.file_name = tmp_file_name;
-      if ($8 != nullptr) {
-        char *tmp = common::substr($8,1,strlen($8)-2);
-        $$->load_data.terminated = $8;
-        free(tmp);
-      }
-      if ($9 != nullptr) {
-        char *tmp = common::substr($9,1,strlen($9)-2);
-        $$->load_data.enclosed = $9;
-        free(tmp);
-      }
+      free($7);
       free(tmp_file_name);
     }
     ;
-
-fields_terminated_by:
-    /* empty */
-    {
-      $$ = nullptr;
-    }
-    | FIELDS TERMINATED BY SSS
-    {
-      $$ = $4;
-    };
-
-enclosed_by:
-    /* empty */
-    {
-      $$ = nullptr;
-    }
-    | ENCLOSED BY SSS
-    {
-      $$ = $3;
-    };
 
 explain_stmt:
     EXPLAIN command_wrapper
     {
       $$ = new ParsedSqlNode(SCF_EXPLAIN);
-      $$->explain.sql_node = unique_ptr<ParsedSqlNode>($2);
+      $$->explain.sql_node = std::unique_ptr<ParsedSqlNode>($2);
     }
     ;
 
@@ -764,6 +668,7 @@ set_variable_stmt:
       $$ = new ParsedSqlNode(SCF_SET_VARIABLE);
       $$->set_variable.name  = $2;
       $$->set_variable.value = *$4;
+      free($2);
       delete $4;
     }
     ;
@@ -777,16 +682,9 @@ extern void scan_string(const char *str, yyscan_t scanner);
 
 int sql_parse(const char *s, ParsedSqlResult *sql_result) {
   yyscan_t scanner;
-  std::vector<char *> allocated_strings;
-  yylex_init_extra(static_cast<void*>(&allocated_strings),&scanner);
+  yylex_init(&scanner);
   scan_string(s, scanner);
   int result = yyparse(s, sql_result, scanner);
-
-  for (char *ptr : allocated_strings) {
-    free(ptr);
-  }
-  allocated_strings.clear();
-
   yylex_destroy(scanner);
   return result;
 }

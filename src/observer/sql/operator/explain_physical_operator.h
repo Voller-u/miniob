@@ -23,34 +23,23 @@ See the Mulan PSL v2 for more details. */
 class ExplainPhysicalOperator : public PhysicalOperator
 {
 public:
-  ExplainPhysicalOperator()          = default;
+  ExplainPhysicalOperator() = default;
   virtual ~ExplainPhysicalOperator() = default;
 
-  PhysicalOperatorType type() const override { return PhysicalOperatorType::EXPLAIN; }
-
-  OpType get_op_type() const override { return OpType::EXPLAIN; }
-
-  double calculate_cost(LogicalProperty *prop, const vector<LogicalProperty *> &child_log_props, CostModel *cm) override
+  PhysicalOperatorType type() const override
   {
-    return 0.0;
+    return PhysicalOperatorType::EXPLAIN;
   }
 
-  RC     open(Trx *trx) override;
-  RC     next() override;
-  RC     next(Chunk &chunk) override;
-  RC     close() override;
+  RC open(Trx *trx) override;
+  RC next() override;
+  RC close() override;
   Tuple *current_tuple() override;
 
-  RC tuple_schema(TupleSchema &schema) const override
-  {
-    schema.append_cell("Query Plan");
-    return RC::SUCCESS;
-  }
+private:
+  void to_string(std::ostream &os, PhysicalOperator *oper, int level, bool last_child, std::vector<bool> &ends);
 
 private:
-  void generate_physical_plan();
-
-private:
-  string         physical_plan_;
+  std::string physical_plan_;
   ValueListTuple tuple_;
 };

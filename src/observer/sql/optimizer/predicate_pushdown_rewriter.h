@@ -14,7 +14,7 @@ See the Mulan PSL v2 for more details. */
 
 #pragma once
 
-#include "common/lang/vector.h"
+#include <vector>
 #include "sql/optimizer/rewrite_rule.h"
 
 /**
@@ -22,15 +22,15 @@ See the Mulan PSL v2 for more details. */
  * @ingroup Rewriter
  * @details 这样可以提前过滤一些数据
  */
-class PredicatePushdownRewriter : public RewriteRule
+class PredicatePushdownRewriter : public RewriteRule 
 {
 public:
-  PredicatePushdownRewriter()          = default;
+  PredicatePushdownRewriter() = default;
   virtual ~PredicatePushdownRewriter() = default;
 
-  RC rewrite(unique_ptr<LogicalOperator> &oper, bool &change_made) override;
+  RC rewrite(std::unique_ptr<LogicalOperator> &oper, bool &change_made) override;
 
 private:
-  RC   get_exprs_can_pushdown(unique_ptr<Expression> &expr, vector<unique_ptr<Expression>> &pushdown_exprs);
-  bool is_empty_predicate(unique_ptr<Expression> &expr);
+  RC get_exprs_can_pushdown(
+      std::unique_ptr<Expression> &expr, std::vector<std::unique_ptr<Expression>> &pushdown_exprs);
 };

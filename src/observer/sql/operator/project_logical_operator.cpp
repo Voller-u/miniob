@@ -14,22 +14,5 @@ See the Mulan PSL v2 for more details. */
 
 #include "sql/operator/project_logical_operator.h"
 
-using namespace std;
-
-ProjectLogicalOperator::ProjectLogicalOperator(vector<unique_ptr<Expression>> &&expressions)
-{
-  expressions_ = std::move(expressions);
-}
-
-unique_ptr<LogicalProperty> ProjectLogicalOperator::find_log_prop(const vector<LogicalProperty*> &log_props)
-{
-  int card = 0;
-  for (auto log_prop : log_props) {
-    if (log_prop != nullptr) {
-      card += log_prop->get_card();
-    } else {
-      LOG_WARN("find_log_prop: log_prop is nullptr");
-    }
-  }
-  return make_unique<LogicalProperty>(card);
-}
+ProjectLogicalOperator::ProjectLogicalOperator(const std::vector<Field> &fields) : fields_(fields)
+{}

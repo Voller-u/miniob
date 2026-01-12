@@ -4,15 +4,12 @@
 TOPDIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 BUILD_SH=$TOPDIR/build.sh
-echo "THIRD_PARTY_INSTALL_PREFIX is ${THIRD_PARTY_INSTALL_PREFIX:=$TOPDIR/deps/3rd/usr/local}"
 
 CMAKE_COMMAND="cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=1 --log-level=STATUS"
-CMAKE_COMMAND_THIRD_PARTY="$CMAKE_COMMAND -DCMAKE_INSTALL_PREFIX=$THIRD_PARTY_INSTALL_PREFIX"
-CMAKE_COMMAND_MINIOB="$CMAKE_COMMAND"
 
 ALL_ARGS=("$@")
 BUILD_ARGS=()
-MAKE_ARGS=()
+MAKE_ARGS=(-j $CPU_CORES)
 MAKE=make
 
 echo "$0 ${ALL_ARGS[@]}"
@@ -75,19 +72,16 @@ function prepare_build_dir
 function do_init
 {
   git submodule update --init || return
-  git -C "deps/3rd/libevent" checkout 112421c8fa4840acd73502f2ab6a674fc025de37 || return
-  # git submodule update --remote "deps/3rd/libevent" || return
-  git -C "deps/3rd/jsoncpp" checkout 1.9.6 || return
-
   current_dir=$PWD
 
   MAKE_COMMAND="make --silent"
 
   # build libevent
   cd ${TOPDIR}/deps/3rd/libevent && \
+    git checkout release-2.1.12-stable && \
     mkdir -p build && \
     cd build && \
-    ${CMAKE_COMMAND_THIRD_PARTY} .. -DEVENT__DISABLE_OPENSSL=ON -DEVENT__LIBRARY_TYPE=BOTH && \
+    ${CMAKE_COMMAND} .. -DEVENT__DISABLE_OPENSSL=ON -DEVENT__LIBRARY_TYPE=BOTH && \
     ${MAKE_COMMAND} -j4 && \
     make install
 
@@ -95,7 +89,7 @@ function do_init
   cd ${TOPDIR}/deps/3rd/googletest && \
     mkdir -p build && \
     cd build && \
-    ${CMAKE_COMMAND_THIRD_PARTY} .. && \
+    ${CMAKE_COMMAND} .. && \
     ${MAKE_COMMAND} -j4 && \
     ${MAKE_COMMAND} install
 
@@ -103,7 +97,7 @@ function do_init
   cd ${TOPDIR}/deps/3rd/benchmark && \
     mkdir -p build && \
     cd build && \
-    ${CMAKE_COMMAND_THIRD_PARTY} .. -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBENCHMARK_ENABLE_TESTING=OFF  -DBENCHMARK_INSTALL_DOCS=OFF -DBENCHMARK_ENABLE_GTEST_TESTS=OFF -DBENCHMARK_USE_BUNDLED_GTEST=OFF -DBENCHMARK_ENABLE_ASSEMBLY_TESTS=OFF && \
+    ${CMAKE_COMMAND} .. -DBENCHMARK_ENABLE_TESTING=OFF  -DBENCHMARK_INSTALL_DOCS=OFF -DBENCHMARK_ENABLE_GTEST_TESTS=OFF -DBENCHMARK_USE_BUNDLED_GTEST=OFF -DBENCHMARK_ENABLE_ASSEMBLY_TESTS=OFF && \
     ${MAKE_COMMAND} -j4 && \
     ${MAKE_COMMAND} install
 
@@ -111,31 +105,11 @@ function do_init
   cd ${TOPDIR}/deps/3rd/jsoncpp && \
     mkdir -p build && \
     cd build && \
-    ${CMAKE_COMMAND_THIRD_PARTY} -DJSONCPP_WITH_TESTS=OFF -DJSONCPP_WITH_POST_BUILD_UNITTEST=OFF .. && \
-    ${MAKE_COMMAND} -j4 && \
-    ${MAKE_COMMAND} install
-
-  # build replxx
-  cd ${TOPDIR}/deps/3rd/replxx && \
-    mkdir -p build && \
-    cd build && \
-    ${CMAKE_COMMAND_THIRD_PARTY} .. -DCMAKE_BUILD_TYPE=Release -DREPLXX_BUILD_EXAMPLES=OFF -DREPLXX_BUILD_PACKAGE=OFF && \
-    ${MAKE_COMMAND} -j4 && \
+    ${CMAKE_COMMAND} -DJSONCPP_WITH_TESTS=OFF -DJSONCPP_WITH_POST_BUILD_UNITTEST=OFF .. && \
+    ${MAKE_COMMAND} && \
     ${MAKE_COMMAND} install
 
   cd $current_dir
-}
-
-function do_musl_init
-{
-  git clone https://github.com/ronchaine/libexecinfo deps/3rd/libexecinfo || return
-  current_dir=$PWD
-
-  MAKE_COMMAND="make --silent"
-  cd ${TOPDIR}/deps/3rd/libexecinfo && \
-    ${MAKE_COMMAND} install && \
-    ${MAKE_COMMAND} clean && rm ${TOPDIR}/deps/3rd/libexecinfo/libexecinfo.so.* && \
-    cd ${current_dir}
 }
 
 function prepare_build_dir
@@ -152,8 +126,8 @@ function do_build
 {
   TYPE=$1; shift
   prepare_build_dir $TYPE || return
-  echo "${CMAKE_COMMAND_MINIOB} ${TOPDIR} $@"
-  ${CMAKE_COMMAND_MINIOB} -S ${TOPDIR} $@
+  echo "${CMAKE_COMMAND} ${TOPDIR} $@"
+  ${CMAKE_COMMAND} -S ${TOPDIR} $@
 }
 
 function do_clean
@@ -162,19 +136,22 @@ function do_clean
   find . -maxdepth 1 -type d -name 'build_*' | xargs rm -rf
 }
 
-function build {
-  # 默认参数是 debug
-  if [ -z "${BUILD_ARGS[0]}" ]; then
-    set -- "debug"  # 如果没有参数，则设置默认值
-  else
-    set -- "${BUILD_ARGS[@]}"  # 否则使用 BUILD_ARGS 的第一个参数
-  fi
-  local build_type_lower=$(echo "$1" | tr '[:upper:]' '[:lower:]')  # 转换为小写
-  echo "Build type: $build_type_lower"  # 输出构建类型
-
-  do_build $@ -DCMAKE_BUILD_TYPE="$build_type_lower" # 调用 do_build
+function build
+{
+  set -- "${BUILD_ARGS[@]}"
+  case "x$1" in
+    xrelease)
+      do_build "$@" -DCMAKE_BUILD_TYPE=RelWithDebInfo -DDEBUG=OFF
+      ;;
+    xdebug)
+      do_build "$@" -DCMAKE_BUILD_TYPE=Debug -DDEBUG=ON
+      ;;
+    *)
+      BUILD_ARGS=(debug "${BUILD_ARGS[@]}")
+      build
+      ;;
+  esac
 }
-
 
 function main
 {
@@ -184,9 +161,6 @@ function main
       ;;
     init)
       do_init
-      ;;
-    musl)
-      do_musl_init
       ;;
     clean)
       do_clean

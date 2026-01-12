@@ -11,20 +11,21 @@ See the Mulan PSL v2 for more details. */
 //
 // Created by Wangyunlai on 2023/03/14
 //
-#include <benchmark/benchmark.h>
 #include <inttypes.h>
+#include <stdexcept>
+#include <benchmark/benchmark.h>
 
-#include "common/lang/stdexcept.h"
-#include "common/log/log.h"
-#include "common/math/integer_generator.h"
-#include "storage/buffer/disk_buffer_pool.h"
 #include "storage/index/bplus_tree.h"
-#include "storage/clog/vacuous_log_handler.h"
-#include "storage/buffer/double_write_buffer.h"
+#include "storage/buffer/disk_buffer_pool.h"
+#include "common/log/log.h"
+#include "integer_generator.h"
 
 using namespace std;
 using namespace common;
 using namespace benchmark;
+
+once_flag         init_bpm_flag;
+BufferPoolManager bpm{512};
 
 struct Stat
 {
@@ -47,7 +48,7 @@ class BenchmarkBase : public Fixture
 public:
   BenchmarkBase() {}
 
-  virtual ~BenchmarkBase() {}
+  virtual ~BenchmarkBase() { BufferPoolManager::set_instance(nullptr); }
 
   virtual string Name() const = 0;
 
@@ -57,11 +58,11 @@ public:
       return;
     }
 
-    bpm_.init(make_unique<VacuousDoubleWriteBuffer>());
-
     string log_name       = this->Name() + ".log";
     string btree_filename = this->Name() + ".btree";
     LoggerFactory::init_default(log_name.c_str(), LOG_LEVEL_TRACE);
+
+    std::call_once(init_bpm_flag, []() { BufferPoolManager::set_instance(&bpm); });
 
     ::remove(btree_filename.c_str());
 
@@ -70,13 +71,12 @@ public:
 
     const char *filename = btree_filename.c_str();
 
-    RC rc = handler_.create(
-        log_handler_, bpm_, filename, AttrType::INTS, sizeof(int32_t) /*attr_len*/, internal_max_size, leaf_max_size);
+    RC rc = handler_.create(filename, INTS, sizeof(int32_t) /*attr_len*/, internal_max_size, leaf_max_size);
     if (rc != RC::SUCCESS) {
       throw runtime_error("failed to create btree handler");
     }
-    LOG_INFO("test %s setup done. threads=%d, thread index=%d",
-             this->Name().c_str(), state.threads(), state.thread_index());
+    LOG_INFO(
+        "test %s setup done. threads=%d, thread index=%d", this->Name().c_str(), state.threads(), state.thread_index());
   }
 
   virtual void TearDown(const State &state)
@@ -181,9 +181,7 @@ public:
   }
 
 protected:
-  BufferPoolManager bpm_{512};
-  BplusTreeHandler  handler_;
-  VacuousLogHandler log_handler_;
+  BplusTreeHandler handler_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

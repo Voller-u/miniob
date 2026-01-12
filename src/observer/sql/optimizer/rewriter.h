@@ -14,16 +14,15 @@ See the Mulan PSL v2 for more details. */
 
 #pragma once
 
+#include <memory>
+#include <vector>
 #include "sql/optimizer/rewrite_rule.h"
-#include "common/lang/memory.h"
-#include "common/lang/vector.h"
 
 class LogicalOperator;
 
 /**
- * @defgroup Rewriter
+ * @defgroup Rewriter 
  * @brief 根据规则对逻辑计划进行重写
- * TODO: refactor with cascade optimizer
  */
 
 /**
@@ -32,7 +31,7 @@ class LogicalOperator;
  * @details 当前仅实现了一两个非常简单的规则。
  * 重写包括对逻辑计划和计划中包含的表达式。
  */
-class Rewriter
+class Rewriter 
 {
 public:
   Rewriter();
@@ -45,8 +44,8 @@ public:
    * @param oper 逻辑计划
    * @param change_made 当前是否有重写发生
    */
-  RC rewrite(unique_ptr<LogicalOperator> &oper, bool &change_made);
+  RC rewrite(std::unique_ptr<LogicalOperator> &oper, bool &change_made);
 
 private:
-  vector<unique_ptr<RewriteRule>> rewrite_rules_;
+  std::vector<std::unique_ptr<RewriteRule>> rewrite_rules_;
 };

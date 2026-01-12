@@ -12,18 +12,18 @@ See the Mulan PSL v2 for more details. */
 // Created by Wangyunlai on 2023/7/12.
 //
 
-#include "sql/stmt/load_data_stmt.h"
-#include "common/lang/string.h"
-#include "common/log/log.h"
-#include "storage/db/db.h"
 #include <unistd.h>
+#include "sql/stmt/load_data_stmt.h"
+#include "common/log/log.h"
+#include "common/lang/string.h"
+#include "storage/db/db.h"
+#include "storage/table/table.h"
 
 using namespace common;
 
 RC LoadDataStmt::create(Db *db, const LoadDataSqlNode &load_data, Stmt *&stmt)
 {
   RC rc = RC::SUCCESS;
-
   const char *table_name = load_data.relation_name.c_str();
   if (is_blank(table_name) || is_blank(load_data.file_name.c_str())) {
     LOG_WARN("invalid argument. db=%p, table_name=%p, file name=%s",
@@ -43,15 +43,6 @@ RC LoadDataStmt::create(Db *db, const LoadDataSqlNode &load_data, Stmt *&stmt)
     return RC::FILE_NOT_EXIST;
   }
 
-  if (load_data.enclosed.size() != 3) {
-    LOG_WARN("load data invalid enclosed. enclosed=%s", load_data.enclosed.c_str());
-    return RC::INVALID_ARGUMENT;
-  }
-  if (load_data.terminated.size() != 3) {
-    LOG_WARN("load data invalid terminated. terminated=%s", load_data.terminated.c_str());
-    return RC::INVALID_ARGUMENT;
-  }
-
-  stmt = new LoadDataStmt(table, load_data.file_name.c_str(), load_data.terminated[1], load_data.enclosed[1]);
+  stmt = new LoadDataStmt(table, load_data.file_name.c_str());
   return rc;
 }

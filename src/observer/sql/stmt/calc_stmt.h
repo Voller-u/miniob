@@ -14,9 +14,12 @@ See the Mulan PSL v2 for more details. */
 
 #pragma once
 
-#include "common/sys/rc.h"
-#include "sql/expr/expression.h"
+#include <vector>
+#include <memory>
+
+#include "common/rc.h"
 #include "sql/stmt/stmt.h"
+#include "sql/expr/expression.h"
 
 class Db;
 class Table;
@@ -25,26 +28,35 @@ class Table;
  * @brief 描述算术运算语句
  * @ingroup Statement
  */
-class CalcStmt : public Stmt
+class CalcStmt : public Stmt 
 {
 public:
-  CalcStmt()                   = default;
+  CalcStmt() = default;
   virtual ~CalcStmt() override = default;
 
-  StmtType type() const override { return StmtType::CALC; }
+  StmtType type() const override
+  {
+    return StmtType::CALC;
+  }
 
 public:
   static RC create(CalcSqlNode &calc_sql, Stmt *&stmt)
   {
-    CalcStmt *calc_stmt     = new CalcStmt();
-    calc_stmt->expressions_ = std::move(calc_sql.expressions);
-    stmt                    = calc_stmt;
+    CalcStmt *calc_stmt = new CalcStmt();
+    for (Expression * const expr : calc_sql.expressions) {
+      calc_stmt->expressions_.emplace_back(expr);
+    }
+    calc_sql.expressions.clear();
+    stmt = calc_stmt;
     return RC::SUCCESS;
   }
 
 public:
-  vector<unique_ptr<Expression>> &expressions() { return expressions_; }
+  std::vector<std::unique_ptr<Expression>> &expressions()
+  {
+    return expressions_;
+  }
 
 private:
-  vector<unique_ptr<Expression>> expressions_;
+  std::vector<std::unique_ptr<Expression>> expressions_;
 };

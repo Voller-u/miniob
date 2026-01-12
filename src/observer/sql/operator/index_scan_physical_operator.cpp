@@ -16,12 +16,14 @@ See the Mulan PSL v2 for more details. */
 #include "storage/index/index.h"
 #include "storage/trx/trx.h"
 
-IndexScanPhysicalOperator::IndexScanPhysicalOperator(Table *table, Index *index, ReadWriteMode mode, const Value *left_value,
-    bool left_inclusive, const Value *right_value, bool right_inclusive)
-    : table_(table),
-      index_(index),
-      mode_(mode),
-      left_inclusive_(left_inclusive),
+IndexScanPhysicalOperator::IndexScanPhysicalOperator(
+    Table *table, Index *index, bool readonly, 
+    const Value *left_value, bool left_inclusive, 
+    const Value *right_value, bool right_inclusive)
+    : table_(table), 
+      index_(index), 
+      readonly_(readonly), 
+      left_inclusive_(left_inclusive), 
       right_inclusive_(right_inclusive)
 {
   if (left_value) {
@@ -48,6 +50,13 @@ RC IndexScanPhysicalOperator::open(Trx *trx)
     LOG_WARN("failed to create index scanner");
     return RC::INTERNAL;
   }
+
+  record_handler_ = table_->record_handler();
+  if (nullptr == record_handler_) {
+    LOG_WARN("invalid record handler");
+    index_scanner->destroy();
+    return RC::INTERNAL;
+  }
   index_scanner_ = index_scanner;
 
   tuple_.set_schema(table_, table_->table_meta().field_metas());
@@ -58,35 +67,30 @@ RC IndexScanPhysicalOperator::open(Trx *trx)
 
 RC IndexScanPhysicalOperator::next()
 {
-  // TODO: 需要适配 lsm-tree 引擎
   RID rid;
-  RC  rc = RC::SUCCESS;
+  RC rc = RC::SUCCESS;
+
+  record_page_handler_.cleanup();
 
   bool filter_result = false;
   while (RC::SUCCESS == (rc = index_scanner_->next_entry(&rid))) {
-    rc = table_->get_record(rid, current_record_);
-    if (OB_FAIL(rc)) {
-      LOG_TRACE("failed to get record. rid=%s, rc=%s", rid.to_string().c_str(), strrc(rc));
+    rc = record_handler_->get_record(record_page_handler_, &rid, readonly_, &current_record_);
+    if (rc != RC::SUCCESS) {
       return rc;
     }
 
-    LOG_TRACE("got a record. rid=%s", rid.to_string().c_str());
-
     tuple_.set_record(&current_record_);
     rc = filter(tuple_, filter_result);
-    if (OB_FAIL(rc)) {
-      LOG_TRACE("failed to filter record. rc=%s", strrc(rc));
+    if (rc != RC::SUCCESS) {
       return rc;
     }
 
     if (!filter_result) {
-      LOG_TRACE("record filtered");
       continue;
     }
 
-    rc = trx_->visit_record(table_, current_record_, mode_);
+    rc = trx_->visit_record(table_, current_record_, readonly_);
     if (rc == RC::RECORD_INVISIBLE) {
-      LOG_TRACE("record invisible");
       continue;
     } else {
       return rc;
@@ -109,16 +113,16 @@ Tuple *IndexScanPhysicalOperator::current_tuple()
   return &tuple_;
 }
 
-void IndexScanPhysicalOperator::set_predicates(vector<unique_ptr<Expression>> &&exprs)
+void IndexScanPhysicalOperator::set_predicates(std::vector<std::unique_ptr<Expression>> &&exprs)
 {
   predicates_ = std::move(exprs);
 }
 
 RC IndexScanPhysicalOperator::filter(RowTuple &tuple, bool &result)
 {
-  RC    rc = RC::SUCCESS;
+  RC rc = RC::SUCCESS;
   Value value;
-  for (unique_ptr<Expression> &expr : predicates_) {
+  for (std::unique_ptr<Expression> &expr : predicates_) {
     rc = expr->get_value(tuple, value);
     if (rc != RC::SUCCESS) {
       return rc;
@@ -135,7 +139,7 @@ RC IndexScanPhysicalOperator::filter(RowTuple &tuple, bool &result)
   return rc;
 }
 
-string IndexScanPhysicalOperator::param() const
+std::string IndexScanPhysicalOperator::param() const
 {
-  return string(index_->index_meta().name()) + " ON " + table_->name();
+  return std::string(index_->index_meta().name()) + " ON " + table_->name();
 }

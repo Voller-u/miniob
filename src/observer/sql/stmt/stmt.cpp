@@ -12,39 +12,24 @@ See the Mulan PSL v2 for more details. */
 // Created by Wangyunlai on 2022/5/22.
 //
 
-#include "sql/stmt/stmt.h"
 #include "common/log/log.h"
-#include "sql/stmt/analyze_table_stmt.h"
-#include "sql/stmt/calc_stmt.h"
+#include "sql/stmt/stmt.h"
+#include "sql/stmt/insert_stmt.h"
+#include "sql/stmt/delete_stmt.h"
+#include "sql/stmt/select_stmt.h"
+#include "sql/stmt/explain_stmt.h"
 #include "sql/stmt/create_index_stmt.h"
 #include "sql/stmt/create_table_stmt.h"
-#include "sql/stmt/delete_stmt.h"
 #include "sql/stmt/desc_table_stmt.h"
-#include "sql/stmt/exit_stmt.h"
-#include "sql/stmt/explain_stmt.h"
 #include "sql/stmt/help_stmt.h"
-#include "sql/stmt/insert_stmt.h"
-#include "sql/stmt/load_data_stmt.h"
-#include "sql/stmt/select_stmt.h"
-#include "sql/stmt/set_variable_stmt.h"
 #include "sql/stmt/show_tables_stmt.h"
 #include "sql/stmt/trx_begin_stmt.h"
 #include "sql/stmt/trx_end_stmt.h"
+#include "sql/stmt/exit_stmt.h"
+#include "sql/stmt/set_variable_stmt.h"
+#include "sql/stmt/load_data_stmt.h"
+#include "sql/stmt/calc_stmt.h"
 
-bool stmt_type_ddl(StmtType type)
-{
-  switch (type) {
-    case StmtType::CREATE_TABLE:
-    case StmtType::DROP_TABLE:
-    case StmtType::DROP_INDEX:
-    case StmtType::CREATE_INDEX: {
-      return true;
-    }
-    default: {
-      return false;
-    }
-  }
-}
 RC Stmt::create_stmt(Db *db, ParsedSqlNode &sql_node, Stmt *&stmt)
 {
   stmt = nullptr;
@@ -74,10 +59,6 @@ RC Stmt::create_stmt(Db *db, ParsedSqlNode &sql_node, Stmt *&stmt)
 
     case SCF_DESC_TABLE: {
       return DescTableStmt::create(db, sql_node.desc_table, stmt);
-    }
-
-    case SCF_ANALYZE_TABLE: { 
-      return AnalyzeTableStmt::create(db, sql_node.analyze_table, stmt);
     }
 
     case SCF_HELP: {
@@ -117,5 +98,5 @@ RC Stmt::create_stmt(Db *db, ParsedSqlNode &sql_node, Stmt *&stmt)
       LOG_INFO("Command::type %d doesn't need to create statement.", sql_node.flag);
     } break;
   }
-  return RC::UNIMPLEMENTED;
+  return RC::UNIMPLENMENT;
 }

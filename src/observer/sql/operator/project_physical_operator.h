@@ -15,7 +15,6 @@ See the Mulan PSL v2 for more details. */
 #pragma once
 
 #include "sql/operator/physical_operator.h"
-#include "sql/expr/expression_tuple.h"
 
 /**
  * @brief 选择/投影物理算子
@@ -24,30 +23,33 @@ See the Mulan PSL v2 for more details. */
 class ProjectPhysicalOperator : public PhysicalOperator
 {
 public:
-  ProjectPhysicalOperator(vector<unique_ptr<Expression>> &&expressions);
+  ProjectPhysicalOperator()
+  {}
 
   virtual ~ProjectPhysicalOperator() = default;
 
-  PhysicalOperatorType type() const override { return PhysicalOperatorType::PROJECT; }
-  OpType               get_op_type() const override { return OpType::PROJECTION; }
-
-  virtual double calculate_cost(
-      LogicalProperty *prop, const vector<LogicalProperty *> &child_log_props, CostModel *cm) override
+  void add_expressions(std::vector<std::unique_ptr<Expression>> &&expressions)
   {
-    return (cm->cpu_op()) * prop->get_card();
+    
+  }
+  void add_projection(const Table *table, const FieldMeta *field);
+
+  PhysicalOperatorType type() const override
+  {
+    return PhysicalOperatorType::PROJECT;
   }
 
   RC open(Trx *trx) override;
   RC next() override;
   RC close() override;
 
-  int cell_num() const { return tuple_.cell_num(); }
+  int cell_num() const
+  {
+    return tuple_.cell_num();
+  }
 
   Tuple *current_tuple() override;
 
-  RC tuple_schema(TupleSchema &schema) const override;
-
 private:
-  vector<unique_ptr<Expression>>          expressions_;
-  ExpressionTuple<unique_ptr<Expression>> tuple_;
+  ProjectTuple tuple_;
 };

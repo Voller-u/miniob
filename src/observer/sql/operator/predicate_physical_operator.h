@@ -14,8 +14,9 @@ See the Mulan PSL v2 for more details. */
 
 #pragma once
 
-#include "sql/expr/expression.h"
+#include <memory>
 #include "sql/operator/physical_operator.h"
+#include "sql/expr/expression.h"
 
 class FilterStmt;
 
@@ -26,12 +27,14 @@ class FilterStmt;
 class PredicatePhysicalOperator : public PhysicalOperator
 {
 public:
-  PredicatePhysicalOperator(unique_ptr<Expression> expr);
+  PredicatePhysicalOperator(std::unique_ptr<Expression> expr);
 
   virtual ~PredicatePhysicalOperator() = default;
 
-  PhysicalOperatorType type() const override { return PhysicalOperatorType::PREDICATE; }
-  OpType               get_op_type() const override { return OpType::FILTER; }
+  PhysicalOperatorType type() const override
+  {
+    return PhysicalOperatorType::PREDICATE;
+  }
 
   RC open(Trx *trx) override;
   RC next() override;
@@ -39,8 +42,6 @@ public:
 
   Tuple *current_tuple() override;
 
-  RC tuple_schema(TupleSchema &schema) const override;
-
 private:
-  unique_ptr<Expression> expression_;
+  std::unique_ptr<Expression> expression_;
 };

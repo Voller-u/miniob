@@ -13,21 +13,12 @@ See the Mulan PSL v2 for more details. */
 //
 
 #include "sql/operator/table_get_logical_operator.h"
-#include "sql/optimizer/cascade/property.h"
-#include "catalog/catalog.h"
 
-TableGetLogicalOperator::TableGetLogicalOperator(Table *table, ReadWriteMode mode)
-    : LogicalOperator(), table_(table), mode_(mode)
+TableGetLogicalOperator::TableGetLogicalOperator(Table *table, const std::vector<Field> &fields, bool readonly)
+    : table_(table), fields_(fields), readonly_(readonly)
 {}
 
-void TableGetLogicalOperator::set_predicates(vector<unique_ptr<Expression>> &&exprs)
+void TableGetLogicalOperator::set_predicates(std::vector<std::unique_ptr<Expression>> &&exprs)
 {
   predicates_ = std::move(exprs);
-}
-
-unique_ptr<LogicalProperty> TableGetLogicalOperator::find_log_prop(const vector<LogicalProperty*> &log_props)
-{
-  int card = Catalog::get_instance().get_table_stats(table_->table_id()).row_nums;
-  // TODO: think about predicates.
-  return make_unique<LogicalProperty>(card);
 }

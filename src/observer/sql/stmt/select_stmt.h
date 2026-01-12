@@ -14,7 +14,10 @@ See the Mulan PSL v2 for more details. */
 
 #pragma once
 
-#include "common/sys/rc.h"
+#include <vector>
+#include <memory>
+
+#include "common/rc.h"
 #include "sql/stmt/stmt.h"
 #include "storage/field/field.h"
 
@@ -27,27 +30,36 @@ class Table;
  * @brief 表示select语句
  * @ingroup Statement
  */
-class SelectStmt : public Stmt
+class SelectStmt : public Stmt 
 {
 public:
   SelectStmt() = default;
   ~SelectStmt() override;
 
-  StmtType type() const override { return StmtType::SELECT; }
+  StmtType type() const override
+  {
+    return StmtType::SELECT;
+  }
 
 public:
-  static RC create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt);
+  static RC create(Db *db, const SelectSqlNode &select_sql, Stmt *&stmt);
 
 public:
-  const vector<Table *> &tables() const { return tables_; }
-  FilterStmt            *filter_stmt() const { return filter_stmt_; }
-
-  vector<unique_ptr<Expression>> &query_expressions() { return query_expressions_; }
-  vector<unique_ptr<Expression>> &group_by() { return group_by_; }
+  const std::vector<Table *> &tables() const
+  {
+    return tables_;
+  }
+  const std::vector<Field> &query_fields() const
+  {
+    return query_fields_;
+  }
+  FilterStmt *filter_stmt() const
+  {
+    return filter_stmt_;
+  }
 
 private:
-  vector<unique_ptr<Expression>> query_expressions_;
-  vector<Table *>                tables_;
-  FilterStmt                    *filter_stmt_ = nullptr;
-  vector<unique_ptr<Expression>> group_by_;
+  std::vector<Field> query_fields_;
+  std::vector<Table *> tables_;
+  FilterStmt *filter_stmt_ = nullptr;
 };

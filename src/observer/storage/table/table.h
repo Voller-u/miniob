@@ -14,41 +14,30 @@ See the Mulan PSL v2 for more details. */
 
 #pragma once
 
+#include <functional>
 #include "storage/table/table_meta.h"
-#include "storage/table/table_engine.h"
-#include "storage/common/chunk.h"
-#include "storage/record/lob_handler.h"
-#include "common/types.h"
-#include "common/lang/span.h"
-#include "common/lang/functional.h"
 
 struct RID;
 class Record;
 class DiskBufferPool;
 class RecordFileHandler;
-class RecordScanner;
-class ChunkFileScanner;
+class RecordFileScanner;
 class ConditionFilter;
 class DefaultConditionFilter;
 class Index;
 class IndexScanner;
 class RecordDeleter;
 class Trx;
-class Db;
 
 /**
  * @brief 表
- *
+ * 
  */
-class Table
+class Table 
 {
 public:
   Table() = default;
   ~Table();
-
-  // TODO: use TableEngine replace Table
-  friend class TableEngine;
-  friend class HeapTableEngine;
 
   /**
    * 创建一个表
@@ -58,16 +47,19 @@ public:
    * @param attribute_count 字段个数
    * @param attributes 字段
    */
-  RC create(Db *db, int32_t table_id, const char *path, const char *name, const char *base_dir,
-      span<const AttrInfoSqlNode> attributes, const vector<string> &primary_keys, StorageFormat storage_format,
-      StorageEngine storage_engine);
+  RC create(int32_t table_id, 
+            const char *path, 
+            const char *name, 
+            const char *base_dir, 
+            int attribute_count, 
+            const AttrInfoSqlNode attributes[]);
 
   /**
    * 打开一个表
    * @param meta_file 保存表元数据的文件完整路径
    * @param base_dir 表所在的文件夹，表记录数据文件、索引数据文件存放位置
    */
-  RC open(Db *db, const char *meta_file, const char *base_dir);
+  RC open(const char *meta_file, const char *base_dir);
 
   /**
    * @brief 根据给定的字段生成一个记录/行
@@ -84,59 +76,45 @@ public:
    * @param record[in/out] 传入的数据包含具体的数据，插入成功会通过此字段返回RID
    */
   RC insert_record(Record &record);
-
-  RC insert_chunk(const Chunk &chunk);
   RC delete_record(const Record &record);
-
-  RC insert_record_with_trx(Record &record, Trx *trx);
-  RC delete_record_with_trx(const Record &record, Trx *trx);
-  RC update_record_with_trx(const Record &old_record, const Record &new_record, Trx *trx);
+  RC visit_record(const RID &rid, bool readonly, std::function<void(Record &)> visitor);
   RC get_record(const RID &rid, Record &record);
+
+  RC recover_insert_record(Record &record);
 
   // TODO refactor
   RC create_index(Trx *trx, const FieldMeta *field_meta, const char *index_name);
 
-  RC get_record_scanner(RecordScanner *&scanner, Trx *trx, ReadWriteMode mode);
+  RC get_record_scanner(RecordFileScanner &scanner, Trx *trx, bool readonly);
 
-  RC get_chunk_scanner(ChunkFileScanner &scanner, Trx *trx, ReadWriteMode mode);
-
-  /**
-   * @brief 可以在页面锁保护的情况下访问记录
-   * @details 当前是在事务中访问记录，为了提供一个“原子性”的访问模式
-   * @param rid
-   * @param visitor
-   * @return RC
-   */
-  RC visit_record(const RID &rid, function<bool(Record &)> visitor);
+  RecordFileHandler *record_handler() const
+  {
+    return record_handler_;
+  }
 
 public:
-  int32_t     table_id() const { return table_meta_.table_id(); }
+  int32_t table_id() const { return table_meta_.table_id(); }
   const char *name() const;
 
-  Db *db() const { return db_; }
-
   const TableMeta &table_meta() const;
-
-  LobFileHandler *lob_handler() const { return lob_handler_; }
 
   RC sync();
 
 private:
-  RC set_value_to_record(char *record_data, const Value &value, const FieldMeta *field);
+  RC insert_entry_of_indexes(const char *record, const RID &rid);
+  RC delete_entry_of_indexes(const char *record, const RID &rid, bool error_on_not_exists);
 
 private:
-  // RC init_record_handler(const char *base_dir);
+  RC init_record_handler(const char *base_dir);
 
 public:
   Index *find_index(const char *index_name) const;
   Index *find_index_by_field(const char *field_name) const;
 
 private:
-  Db       *db_ = nullptr;
-  TableMeta table_meta_;
-  // DiskBufferPool    *data_buffer_pool_ = nullptr;  /// 数据文件关联的buffer pool
-  // RecordFileHandler *record_handler_   = nullptr;  /// 记录操作
-  // vector<Index *>    indexes_;
-  unique_ptr<TableEngine> engine_      = nullptr;
-  LobFileHandler         *lob_handler_ = nullptr;
+  std::string base_dir_;
+  TableMeta   table_meta_;
+  DiskBufferPool *data_buffer_pool_ = nullptr;   /// 数据文件关联的buffer pool
+  RecordFileHandler *record_handler_ = nullptr;  /// 记录操作
+  std::vector<Index *> indexes_;
 };

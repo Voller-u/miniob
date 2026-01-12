@@ -14,7 +14,7 @@ See the Mulan PSL v2 for more details. */
 
 #pragma once
 
-#include "common/lang/initializer_list.h"
+#include <vector>
 #include "sql/operator/physical_operator.h"
 
 /**
@@ -25,7 +25,8 @@ See the Mulan PSL v2 for more details. */
 class StringListPhysicalOperator : public PhysicalOperator
 {
 public:
-  StringListPhysicalOperator() {}
+  StringListPhysicalOperator()
+  {}
 
   virtual ~StringListPhysicalOperator() = default;
 
@@ -35,7 +36,10 @@ public:
     strings_.emplace_back(begin, end);
   }
 
-  void append(initializer_list<string> init) { strings_.emplace_back(init); }
+  void append(std::initializer_list<std::string> init)
+  {
+    strings_.emplace_back(init);
+  }
 
   template <typename T>
   void append(const T &v)
@@ -43,14 +47,20 @@ public:
     strings_.emplace_back(1, v);
   }
 
-  PhysicalOperatorType type() const override { return PhysicalOperatorType::STRING_LIST; }
+  PhysicalOperatorType type() const override
+  {
+    return PhysicalOperatorType::STRING_LIST;
+  }
 
-  RC open(Trx *) override { return RC::SUCCESS; }
+  RC open(Trx *) override
+  {
+    return RC::SUCCESS;
+  }
 
   RC next() override
   {
     if (!started_) {
-      started_  = true;
+      started_ = true;
       iterator_ = strings_.begin();
     } else if (iterator_ != strings_.end()) {
       ++iterator_;
@@ -71,10 +81,11 @@ public:
     }
 
     const StringList &string_list = *iterator_;
-    vector<Value>     cells;
-    for (const string &s : string_list) {
+    std::vector<Value> cells;
+    for (const std::string &s : string_list) {
 
-      Value value(s.c_str());
+      Value value;
+      value.set_string(s.c_str());
       cells.push_back(value);
     }
     tuple_.set_cells(cells);
@@ -82,10 +93,10 @@ public:
   }
 
 private:
-  using StringList     = vector<string>;
-  using StringListList = vector<StringList>;
-  StringListList           strings_;
+  using StringList = std::vector<std::string>;
+  using StringListList = std::vector<StringList>;
+  StringListList strings_;
   StringListList::iterator iterator_;
-  bool                     started_ = false;
-  ValueListTuple           tuple_;
+  bool started_ = false;
+  ValueListTuple tuple_;
 };

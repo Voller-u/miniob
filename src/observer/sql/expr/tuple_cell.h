@@ -14,27 +14,31 @@ See the Mulan PSL v2 for more details. */
 
 #pragma once
 
+#include <iostream>
+#include "storage/table/table.h"
 #include "storage/field/field_meta.h"
 
-class TupleCellSpec final
+class TupleCellSpec
 {
 public:
-  TupleCellSpec() = default;
   TupleCellSpec(const char *table_name, const char *field_name, const char *alias = nullptr);
-  explicit TupleCellSpec(const char *alias);
-  explicit TupleCellSpec(const string &alias);
+  TupleCellSpec(const char *alias);
 
-  const char *table_name() const { return table_name_.c_str(); }
-  const char *field_name() const { return field_name_.c_str(); }
-  const char *alias() const { return alias_.c_str(); }
-
-  bool equals(const TupleCellSpec &other) const
+  const char *table_name() const
   {
-    return table_name_ == other.table_name_ && field_name_ == other.field_name_ && alias_ == other.alias_;
+    return table_name_.c_str();
+  }
+  const char *field_name() const
+  {
+    return field_name_.c_str();
+  }
+  const char *alias() const
+  {
+    return alias_.c_str();
   }
 
 private:
-  string table_name_;
-  string field_name_;
-  string alias_;
+  std::string table_name_;
+  std::string field_name_;
+  std::string alias_;
 };

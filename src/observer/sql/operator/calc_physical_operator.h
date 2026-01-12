@@ -14,25 +14,33 @@ See the Mulan PSL v2 for more details. */
 
 #pragma once
 
-#include "sql/expr/expression_tuple.h"
 #include "sql/operator/physical_operator.h"
+#include "sql/expr/tuple.h"
 
 class CalcPhysicalOperator : public PhysicalOperator
 {
 public:
-  CalcPhysicalOperator(vector<unique_ptr<Expression>> &&expressions)
-      : expressions_(std::move(expressions)), tuple_(expressions_)
+  CalcPhysicalOperator(std::vector<std::unique_ptr<Expression>> &&expressions)
+    : expressions_(std::move(expressions)), tuple_(expressions_)
   {}
 
   virtual ~CalcPhysicalOperator() = default;
 
-  PhysicalOperatorType type() const override { return PhysicalOperatorType::CALC; }
-  OpType               get_op_type() const override { return OpType::CALCULATE; }
+  PhysicalOperatorType type() const override
+  {
+    return PhysicalOperatorType::CALC;
+  }
 
-  string name() const override { return "CALC"; }
-  string param() const override { return ""; }
+  std::string name() const override
+  {
+    return "CALC";
+  }
+  std::string param() const override
+  {
+    return "";
+  }
 
-  RC open(Trx *trx) override { return RC::SUCCESS; }
+  RC open(Trx *trx) override { return RC::SUCCESS;}
   RC next() override
   {
     RC rc = RC::SUCCESS;
@@ -54,22 +62,23 @@ public:
   }
   RC close() override { return RC::SUCCESS; }
 
-  int cell_num() const { return tuple_.cell_num(); }
-
-  Tuple *current_tuple() override { return &tuple_; }
-
-  const vector<unique_ptr<Expression>> &expressions() const { return expressions_; }
-
-  RC tuple_schema(TupleSchema &schema) const override
+  int cell_num() const
   {
-    for (const unique_ptr<Expression> &expression : expressions_) {
-      schema.append_cell(expression->name());
-    }
-    return RC::SUCCESS;
+    return tuple_.cell_num();
+  }
+
+  Tuple *current_tuple() override
+  {
+    return &tuple_;
+  }
+
+  const std::vector<std::unique_ptr<Expression>> &expressions() const
+  {
+    return expressions_;
   }
 
 private:
-  vector<unique_ptr<Expression>>          expressions_;
-  ExpressionTuple<unique_ptr<Expression>> tuple_;
-  bool                                    emitted_ = false;
+  std::vector<std::unique_ptr<Expression>> expressions_;
+  ExpressionTuple tuple_;
+  bool emitted_ = false;
 };

@@ -13,11 +13,10 @@ See the Mulan PSL v2 for more details. */
 //
 
 #include "sql/optimizer/rewriter.h"
-#include "common/log/log.h"
-#include "sql/operator/logical_operator.h"
 #include "sql/optimizer/expression_rewriter.h"
-#include "sql/optimizer/predicate_pushdown_rewriter.h"
 #include "sql/optimizer/predicate_rewrite.h"
+#include "sql/optimizer/predicate_pushdown_rewriter.h"
+#include "sql/operator/logical_operator.h"
 
 Rewriter::Rewriter()
 {
@@ -26,14 +25,13 @@ Rewriter::Rewriter()
   rewrite_rules_.emplace_back(new PredicatePushdownRewriter);
 }
 
-RC Rewriter::rewrite(unique_ptr<LogicalOperator> &oper, bool &change_made)
+RC Rewriter::rewrite(std::unique_ptr<LogicalOperator> &oper, bool &change_made)
 {
   RC rc = RC::SUCCESS;
 
   change_made = false;
-  for (unique_ptr<RewriteRule> &rule : rewrite_rules_) {
+  for (std::unique_ptr<RewriteRule> &rule : rewrite_rules_) {
     bool sub_change_made = false;
-
     rc = rule->rewrite(oper, sub_change_made);
     if (rc != RC::SUCCESS) {
       LOG_WARN("failed to rewrite logical operator. rc=%s", strrc(rc));
@@ -49,10 +47,10 @@ RC Rewriter::rewrite(unique_ptr<LogicalOperator> &oper, bool &change_made)
     return rc;
   }
 
-  vector<unique_ptr<LogicalOperator>> &child_opers = oper->children();
+  std::vector<std::unique_ptr<LogicalOperator>> &child_opers = oper->children();
   for (auto &child_oper : child_opers) {
     bool sub_change_made = false;
-    rc                   = this->rewrite(child_oper, sub_change_made);
+    rc = this->rewrite(child_oper, sub_change_made);
     if (rc != RC::SUCCESS) {
       LOG_WARN("failed to rewrite child oper. rc=%s", strrc(rc));
       return rc;

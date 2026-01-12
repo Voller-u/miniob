@@ -14,7 +14,7 @@ See the Mulan PSL v2 for more details. */
 
 #pragma once
 
-#include "common/sys/rc.h"
+#include "common/rc.h"
 
 class SQLStageEvent;
 
@@ -26,7 +26,7 @@ class SQLStageEvent;
 class CreateIndexExecutor
 {
 public:
-  CreateIndexExecutor()          = default;
+  CreateIndexExecutor() = default;
   virtual ~CreateIndexExecutor() = default;
 
   RC execute(SQLStageEvent *sql_event);

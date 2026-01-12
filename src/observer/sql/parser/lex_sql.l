@@ -27,7 +27,6 @@ while (0);
 %{
 #include<string.h>
 #include<stdio.h>
-#include <vector>
 
 /**
  * flex 代码包含三个部分，使用 %% 分隔
@@ -60,7 +59,7 @@ extern double atof();
 %option case-insensitive
 %option bison-locations
 
-WHITE_SPACE      [\ \t\b\f]
+WHITE_SAPCE      [\ \t\b\f]
 DIGIT            [0-9]+
 
 ID               [A-Za-z_]+[A-Za-z0-9_]*
@@ -75,11 +74,11 @@ QUOTE            [\'\"]
 /* yylval 就可以认为是 yacc 中 %union 定义的结构体(union 结构) */
 %%
 
-{WHITE_SPACE}                                        // ignore whitespace
+{WHITE_SAPCE}                                        // ignore whitespace
 \n                                                   ;
 
-{DIGIT}+                           yylval->number=atoi(yytext); RETURN_TOKEN(NUMBER);
-{DIGIT}+{DOT}{DIGIT}+              yylval->floats=(float)(atof(yytext)); RETURN_TOKEN(FLOAT);
+[\-]?{DIGIT}+                           yylval->number=atoi(yytext); RETURN_TOKEN(NUMBER);
+[\-]?{DIGIT}+{DOT}{DIGIT}+              yylval->floats=(float)(atof(yytext)); RETURN_TOKEN(FLOAT);
 
 ";"                                     RETURN_TOKEN(SEMICOLON);
 {DOT}                                   RETURN_TOKEN(DOT);
@@ -111,22 +110,11 @@ ROLLBACK                                RETURN_TOKEN(TRX_ROLLBACK);
 INT                                     RETURN_TOKEN(INT_T);
 CHAR                                    RETURN_TOKEN(STRING_T);
 FLOAT                                   RETURN_TOKEN(FLOAT_T);
-VECTOR                                  RETURN_TOKEN(VECTOR_T);
 LOAD                                    RETURN_TOKEN(LOAD);
 DATA                                    RETURN_TOKEN(DATA);
 INFILE                                  RETURN_TOKEN(INFILE);
 EXPLAIN                                 RETURN_TOKEN(EXPLAIN);
-GROUP                                   RETURN_TOKEN(GROUP);
-BY                                      RETURN_TOKEN(BY);
-STORAGE                                 RETURN_TOKEN(STORAGE);
-FORMAT                                  RETURN_TOKEN(FORMAT);
-PRIMARY                                 RETURN_TOKEN(PRIMARY);
-KEY                                     RETURN_TOKEN(KEY);
-ANALYZE                                 RETURN_TOKEN(ANALYZE);
-FIELDS                                  RETURN_TOKEN(FIELDS);
-TERMINATED                              RETURN_TOKEN(TERMINATED);
-ENCLOSED                                RETURN_TOKEN(ENCLOSED);
-{ID}                                    yylval->cstring=strdup(yytext); static_cast<std::vector<char*>*>(yyextra)->push_back(yylval->cstring); RETURN_TOKEN(ID);
+{ID}                                    yylval->string=strdup(yytext); RETURN_TOKEN(ID);
 "("                                     RETURN_TOKEN(LBRACE);
 ")"                                     RETURN_TOKEN(RBRACE);
 
@@ -143,8 +131,8 @@ ENCLOSED                                RETURN_TOKEN(ENCLOSED);
 "-" |
 "*" |
 "/"                                     { return yytext[0]; }
-\"[^"]*\"                               yylval->cstring = strdup(yytext); static_cast<std::vector<char*>*>(yyextra)->push_back(yylval->cstring); RETURN_TOKEN(SSS);
-'[^']*\'                                yylval->cstring = strdup(yytext); static_cast<std::vector<char*>*>(yyextra)->push_back(yylval->cstring); RETURN_TOKEN(SSS);
+\"[^"]*\"                               yylval->string = strdup(yytext); RETURN_TOKEN(SSS);
+'[^']*\'                                yylval->string = strdup(yytext); RETURN_TOKEN(SSS);
 
 .                                       LOG_DEBUG("Unknown character [%c]",yytext[0]); return yytext[0];
 %%
