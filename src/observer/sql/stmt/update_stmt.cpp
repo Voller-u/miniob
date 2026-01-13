@@ -72,14 +72,18 @@ RC UpdateStmt::create(Db *db, UpdateSqlNode &update, Stmt *&stmt)
     if (nullptr != update_field) {
       if (update.values[i]->type() == ExprType::VALUE) {
         const Value& val = static_cast<ValueExpr*>(update.values[i])->get_value();
-        if (update_field->type() == val.attr_type() || (val.is_null() && update_field->nullable())) {
+        // 严格类型检查：类型必须完全匹配，不允许类型转换
+        if (val.is_null() && update_field->nullable()) {
+          valid = true;
+        } else if (update_field->type() == val.attr_type()) {
           if (update_field->type() == CHARS && update_field->len() < val.length()) {
-            LOG_WARN("update chars with longer length");
-          } else {
-            valid = true;
+            LOG_WARN("update chars with longer length. field=%s, value length=%d, field len=%d",
+              update_field->name(), val.length(), update_field->len());
+            return RC::INVALID_ARGUMENT;
           }
+          valid = true;
           // 将不确定长度的 char 改为固定长度的 char
-          if (valid && CHARS == update_field->type()) {
+          if (CHARS == update_field->type()) {
             char *char_value = (char*)malloc(update_field->len());
             memset(char_value, 0, update_field->len());
             memcpy(char_value, val.data(), val.length());
@@ -87,17 +91,17 @@ RC UpdateStmt::create(Db *db, UpdateSqlNode &update, Stmt *&stmt)
             free(char_value);
           }
         } else if (TEXTS == update_field->type() && CHARS == val.attr_type()) {
+          // 只允许 TEXTS 和 CHARS 之间的兼容（因为它们本质相同）
           if (MAX_TEXT_LENGTH < val.length()) {
             LOG_WARN("Text length:%d, over max_length 65535", val.length());
             return RC::INVALID_ARGUMENT;
           }
           valid = true;
-        } else if (const_cast<Value&>(val).typecast(update_field->type()) != RC::SUCCESS) {
+        } else {
+          // 其他类型不匹配直接返回错误
           LOG_WARN("field type mismatch. table=%s, field=%s, field type=%d, value_type=%d",
             table->name(), update_field->name(), update_field->type(), val.attr_type());
           return RC::SCHEMA_FIELD_TYPE_MISMATCH;
-        } else {
-          valid = true;
         }
       } else {
         if (RC rc = update.values[i]->traverse_check(check_field); RC::SUCCESS != rc) {

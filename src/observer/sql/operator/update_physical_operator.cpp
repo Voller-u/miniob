@@ -90,16 +90,18 @@ RC UpdatePhysicalOperator::find_target_columns()
         }
       }
       // 拿到 Raw Value
-      // 判断 类型是否符合要求
+      // 严格类型检查：类型必须完全匹配，不允许类型转换
       if (raw_value.is_null() && field_meta->nullable()) {
-        // ok
+        // NULL值且字段允许NULL，可以
       } else if (raw_value.attr_type() != field_meta->type()) {
+        // 只允许 TEXTS 和 CHARS 之间的兼容（因为它们本质相同）
         if (TEXTS == field_meta->type() && CHARS == raw_value.attr_type()) {
-        } else if (const_cast<Value&>(raw_value).typecast(field_meta->type()) != RC::SUCCESS) {
+          // 允许
+        } else {
+          // 其他类型不匹配直接返回错误
           LOG_WARN("field type mismatch. table=%s, field=%s, field type=%d, value_type=%d",
                   table_->name(), fields_[c_idx].c_str(), field_meta->type(), raw_value.attr_type());
-          // return RC::SCHEMA_FIELD_TYPE_MISMATCH;
-          invalid_ = true;
+          return RC::SCHEMA_FIELD_TYPE_MISMATCH;
         }
       }
 
