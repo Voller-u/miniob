@@ -774,8 +774,8 @@ join_list:
 sub_query_expr:
     LBRACE select_stmt RBRACE
     {
-      $$ = new SubQueryExpr($2->selection); // 子查询中所有的 Expression 都交给 SubQueryExpr 来管理了
-      delete $2;
+      yyerror(&@$, sql_string, sql_result, scanner, "Subqueries are not supported");
+      YYERROR;
     }
     ;
 
@@ -861,16 +861,20 @@ expression_list:
     ;
 expression:
     expression '+' expression {
-      $$ = create_arithmetic_expression(ArithmeticExpr::Type::ADD, $1, $3, sql_string, &@$);
+      yyerror(&@$, sql_string, sql_result, scanner, "Arithmetic expressions are not supported");
+      YYERROR;
     }
     | expression '-' expression {
-      $$ = create_arithmetic_expression(ArithmeticExpr::Type::SUB, $1, $3, sql_string, &@$);
+      yyerror(&@$, sql_string, sql_result, scanner, "Arithmetic expressions are not supported");
+      YYERROR;
     }
     | expression '*' expression {
-      $$ = create_arithmetic_expression(ArithmeticExpr::Type::MUL, $1, $3, sql_string, &@$);
+      yyerror(&@$, sql_string, sql_result, scanner, "Arithmetic expressions are not supported");
+      YYERROR;
     }
     | expression '/' expression {
-      $$ = create_arithmetic_expression(ArithmeticExpr::Type::DIV, $1, $3, sql_string, &@$);
+      yyerror(&@$, sql_string, sql_result, scanner, "Arithmetic expressions are not supported");
+      YYERROR;
     }
     | LBRACE expression_list RBRACE {
       if ($2->size() == 1) {
@@ -882,7 +886,8 @@ expression:
       delete $2;
     }
     | '-' expression %prec UMINUS {
-      $$ = create_arithmetic_expression(ArithmeticExpr::Type::NEGATIVE, $2, nullptr, sql_string, &@$);
+      yyerror(&@$, sql_string, sql_result, scanner, "Arithmetic expressions are not supported");
+      YYERROR;
     }
     | value {
       $$ = new ValueExpr(*$1);
@@ -898,10 +903,12 @@ expression:
       $$ = $1; // AggrFuncExpr
     }
     | func_expr {
-      $$ = $1; // SysFuncExpr
+      yyerror(&@$, sql_string, sql_result, scanner, "Function expressions are not supported");
+      YYERROR;
     }
     | sub_query_expr {
-      $$ = $1; // SubQueryExpr
+      yyerror(&@$, sql_string, sql_result, scanner, "Subqueries are not supported");
+      YYERROR;
     }
     ;
 
@@ -1081,8 +1088,8 @@ opt_group_by:
   }
 	| GROUP BY expression_list
 	{
-      $$ = $3;
-      std::reverse($$->begin(),$$->end());
+      yyerror(&@$, sql_string, sql_result, scanner, "GROUP BY is not supported");
+      YYERROR;
 	}
 	;
 opt_having:
