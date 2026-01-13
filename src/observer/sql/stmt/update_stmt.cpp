@@ -92,9 +92,10 @@ RC UpdateStmt::create(Db *db, UpdateSqlNode &update, Stmt *&stmt)
           }
         } else if (TEXTS == update_field->type() && CHARS == val.attr_type()) {
           // 只允许 TEXTS 和 CHARS 之间的兼容（因为它们本质相同）
+          // TEXT类型超过4096字节会在更新时截断，这里不需要返回错误
           if (MAX_TEXT_LENGTH < val.length()) {
-            LOG_WARN("Text length:%d, over max_length 65535", val.length());
-            return RC::INVALID_ARGUMENT;
+            LOG_WARN("Text length:%d exceeds max_length %d, will be truncated. field=%s",
+                     val.length(), MAX_TEXT_LENGTH, update_field->name());
           }
           valid = true;
         } else {

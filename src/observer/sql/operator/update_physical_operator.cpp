@@ -19,6 +19,7 @@ See the Mulan PSL v2 for more details. */
 #include "storage/table/table.h"
 #include "storage/trx/trx.h"
 #include "sql/stmt/delete_stmt.h"
+#include "sql/parser/value.h"
 
 RC UpdatePhysicalOperator::open(Trx *trx)
 {
@@ -221,8 +222,15 @@ RC UpdatePhysicalOperator::construct_new_record(Record &old_record, Record &new_
       new_null_bitmap.clear_bit(fields_id_[c_idx]);
 
       if (TEXTS == field_meta.type()) {
+        // TEXT类型固定为4096字节，如果超过则截断
+        int64_t text_length = value->length();
+        if (text_length > MAX_TEXT_LENGTH) {
+          LOG_WARN("Text length %ld exceeds maximum %d bytes, truncating to %d bytes. field=%s",
+                   text_length, MAX_TEXT_LENGTH, MAX_TEXT_LENGTH, field_meta.name());
+          text_length = MAX_TEXT_LENGTH;
+        }
         int64_t position[2];
-        position[1] = value->length();
+        position[1] = text_length;
         rc = table_->write_text(position[0], position[1], value->data());
         if (rc != RC::SUCCESS) {
           LOG_WARN("Failed to write text into table, rc=%s", strrc(rc));

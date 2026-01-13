@@ -28,6 +28,7 @@ See the Mulan PSL v2 for more details. */
 #include "storage/index/index.h"
 #include "storage/index/bplus_tree_index.h"
 #include "storage/trx/trx.h"
+#include "sql/parser/value.h"
 #include "event/sql_debug.h"
 #include "common/lang/defer.h"
 
@@ -414,9 +415,16 @@ RC Table::make_record(int value_num, const Value *values, Record &record)
       }
     }
     if (TEXTS == field->type()) {
+      // TEXT类型固定为4096字节，如果超过则截断
+      int64_t text_length = value.length();
+      if (text_length > MAX_TEXT_LENGTH) {
+        LOG_WARN("Text length %ld exceeds maximum %d bytes, truncating to %d bytes. field=%s", 
+                 text_length, MAX_TEXT_LENGTH, MAX_TEXT_LENGTH, field->name());
+        text_length = MAX_TEXT_LENGTH;
+      }
       // 需要将value中的字符串插入到文件中，然后将offset、length写入record
       int64_t position[2];
-      position[1] = value.length();
+      position[1] = text_length;
       text_buffer_pool_->append_data(position[0], position[1], value.data());
       memcpy(record_data + field->offset(), position, 2 * sizeof(int64_t));
     } else {

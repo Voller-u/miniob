@@ -90,9 +90,10 @@ RC InsertStmt::check_full_rows(Table *table, const InsertSqlNode &inserts, std::
       if (field_type != value_type) {
         // 只允许 TEXTS 和 CHARS 之间的兼容（因为它们本质相同）
         if (TEXTS == field_type && CHARS == value_type) {
+          // TEXT类型超过4096字节会在make_record时截断，这里不需要返回错误
           if (MAX_TEXT_LENGTH < values[i].length()) {
-            LOG_WARN("Text length:%d, over max_length 65535", values[i].length());
-            return RC::INVALID_ARGUMENT;
+            LOG_WARN("Text length:%d exceeds max_length %d, will be truncated. field=%s",
+                     values[i].length(), MAX_TEXT_LENGTH, field_meta->name());
           }
         } else {
           // 其他类型不匹配直接返回错误
@@ -178,9 +179,10 @@ RC InsertStmt::check_incomplete_rows(Table *table, const InsertSqlNode &inserts,
         if (field_type != value_type) {
           // 只允许 TEXTS 和 CHARS 之间的兼容（因为它们本质相同）
           if (TEXTS == field_type && CHARS == value_type) {
+            // TEXT类型超过4096字节会在make_record时截断，这里不需要返回错误
             if (MAX_TEXT_LENGTH < values[name_idx].length()) {
-              LOG_WARN("Text length:%d, over max_length 65535", values[name_idx].length());
-              return RC::INVALID_ARGUMENT;
+              LOG_WARN("Text length:%d exceeds max_length %d, will be truncated. field=%s",
+                       values[name_idx].length(), MAX_TEXT_LENGTH, field_meta->name());
             }
           } else {
             // 其他类型不匹配直接返回错误

@@ -17,7 +17,7 @@ See the Mulan PSL v2 for more details. */
 #include <string>
 #include "common/rc.h"
 
-static constexpr int MAX_TEXT_LENGTH = 65535;
+static constexpr int MAX_TEXT_LENGTH = 4096;  // TEXT类型固定为4096字节
 
 static int ATTR_TYPE_LENGTH[] = { -1, 4, 4, 4, 8, 4, 8, MAX_TEXT_LENGTH, 4, -1 };
 
@@ -34,7 +34,7 @@ enum AttrType
   DOUBLES,        
   DATES,          ///< 日期类型
   LONGS,          ///< Int64
-  TEXTS,          ///< text类型，最大65535字节
+  TEXTS,          ///< text类型，固定4096字节
   NULLS,          ///< null类型
   BOOLEANS,       ///< boolean类型，当前不是由parser解析出来的，是程序内部使用的
 };

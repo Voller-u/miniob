@@ -82,6 +82,10 @@ RC TableMeta::init(int32_t table_id, const char *name, int field_num, const Attr
 
   for (int i = 0; i < field_num; i++) {
     const AttrInfoSqlNode &attr_info = attributes[i];
+    
+    // TEXT类型固定为4096字节，如果用户指定了长度超过4096，会截断到4096
+    // 这里不需要检查，因为FieldMeta::init会自动处理TEXT类型的长度
+    
     rc = fields_[i + sys_field_num].init(attr_info.name.c_str(), 
             attr_info.type, field_offset, attr_info.length, true/*visible*/, attr_info.nullable);
     if (rc != RC::SUCCESS) {
