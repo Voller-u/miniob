@@ -149,8 +149,16 @@ RC UpdatePhysicalOperator::next()
       }
     }
 
+    // 先通过事务系统检查记录是否可见和可修改
+    rc = trx_->visit_record(table_, record, false /*readonly*/);
+    if (rc != RC::SUCCESS) {
+      LOG_WARN("failed to visit record for update. rc=%s", strrc(rc));
+      // 如果记录不可见或不可修改，跳过这条记录
+      continue;
+    }
+
     // 接口内部只保证当前record更新的原子性
-    rc = table_->update_record(record, new_record);    //这里暂时没管事务，之后需要修改
+    rc = table_->update_record(record, new_record);
     if (rc != RC::SUCCESS) {
       // 更新失败，需要回滚之前成功的record
       LOG_WARN("failed to update record: %s", strrc(rc));
