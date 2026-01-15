@@ -2993,8 +2993,8 @@ yyreduce:
   case 126: /* opt_order_by: ORDER BY sort_list  */
 #line 1080 "yacc_sql.y"
         {
-      (yyval.orderby_unit_list) = (yyvsp[0].orderby_unit_list);
-      std::reverse((yyval.orderby_unit_list)->begin(),(yyval.orderby_unit_list)->end());
+      yyerror(&(yyloc), sql_string, sql_result, scanner, "ORDER BY is not supported");
+      YYERROR;
 	}
 #line 3000 "yacc_sql.cpp"
     break;
