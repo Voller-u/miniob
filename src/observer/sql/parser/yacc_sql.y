@@ -1078,8 +1078,8 @@ opt_order_by:
   }
 	| ORDER BY sort_list
 	{
-      $$ = $3;
-      std::reverse($$->begin(),$$->end());
+      yyerror(&@$, sql_string, sql_result, scanner, "ORDER BY is not supported");
+      YYERROR;
 	}
 	;
 opt_group_by:
